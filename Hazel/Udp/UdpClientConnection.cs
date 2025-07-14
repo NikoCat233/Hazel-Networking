@@ -10,7 +10,7 @@ namespace Hazel.Udp
     ///     Represents a client's connection to a server that uses the UDP protocol.
     /// </summary>
     /// <inheritdoc/>
-    public sealed class UdpClientConnection : UdpConnection
+    public class UdpClientConnection : UdpConnection
     {
         /// <summary>
         /// The max size Hazel attempts to read from the network.
@@ -27,14 +27,14 @@ namespace Hazel.Udp
         /// <summary>
         ///     The socket we're connected via.
         /// </summary>
-        private Socket socket;
+        protected Socket socket;
 
         /// <summary>
         ///     Reset event that is triggered when the connection is marked Connected.
         /// </summary>
         private ManualResetEvent connectWaitLock = new ManualResetEvent(false);
 
-        private Timer reliablePacketTimer;
+        protected Timer reliablePacketTimer;
 
 #if DEBUG
         public event Action<byte[], int> DataSentRaw;
@@ -56,7 +56,7 @@ namespace Hazel.Udp
             reliablePacketTimer = new Timer(ManageReliablePacketsInternal, null, 100, Timeout.Infinite);
             this.InitializeKeepAliveTimer();
         }
-        
+
         ~UdpClientConnection()
         {
             this.Dispose(false);
@@ -64,12 +64,20 @@ namespace Hazel.Udp
 
         private void ManageReliablePacketsInternal(object state)
         {
-            base.ManageReliablePackets();
+            ManageReliablePackets();
             try
             {
                 reliablePacketTimer.Change(100, Timeout.Infinite);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Virtual method that can be overridden by subclasses to extend reliable packet management
+        /// </summary>
+        protected new virtual void ManageReliablePackets()
+        {
+            base.ManageReliablePackets();
         }
 
         /// <inheritdoc />
@@ -201,7 +209,7 @@ namespace Hazel.Udp
         /// <summary>
         ///     Instructs the listener to begin listening.
         /// </summary>
-        void StartListeningForData()
+        protected void StartListeningForData()
         {
 #if DEBUG
             if (this.TestLagMs > 0)
