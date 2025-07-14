@@ -268,8 +268,13 @@ namespace Hazel.Dtls
                 throw new HazelException("A SocketException occurred while initiating a receive operation.", e);
             }
 
-            // For DTLS, we don't use the regular UDP hello mechanism
-            // The DTLS handshake serves as the connection establishment
+            // Write bytes to the server to tell it hi (and to punch a hole in our NAT, if present)
+            // When acknowledged set the state to connected
+            SendHello(bytes, () =>
+            {
+                this.State = ConnectionState.Connected;
+                this.InitializeKeepAliveTimer();
+            });
         }
 
         /// <summary>
