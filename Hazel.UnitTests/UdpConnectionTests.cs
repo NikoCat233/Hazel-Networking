@@ -1,9 +1,9 @@
-using System;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.Net;
-using System.Threading;
 using Hazel.Udp;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
+using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Hazel.UnitTests
@@ -176,7 +176,7 @@ namespace Hazel.UnitTests
                 connection.Connect();
             }
         }
-        
+
         /// <summary>
         ///     Tests dual mode connectivity.
         /// </summary>
@@ -310,7 +310,7 @@ namespace Hazel.UnitTests
                 TestHelper.RunServerToClientTest(listener, connection, 10, SendOption.Reliable);
             }
         }
-        
+
         /// <summary>
         ///     Tests server to client unreliable communication on the UdpConnection.
         /// </summary>

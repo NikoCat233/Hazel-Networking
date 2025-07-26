@@ -45,7 +45,8 @@ namespace Hazel.Udp.FewerThreads
 
             public static ConnectionId Create(IPEndPoint endPoint, int serial)
             {
-                return new ConnectionId{
+                return new ConnectionId
+                {
                     EndPoint = endPoint,
                     Serial = serial,
                 };
@@ -78,7 +79,7 @@ namespace Hazel.Udp.FewerThreads
         }
 
         protected ConcurrentDictionary<ConnectionId, ThreadLimitedUdpServerConnection> allConnections = new ConcurrentDictionary<ConnectionId, ThreadLimitedUdpServerConnection>();
-        
+
         private BlockingCollection<ReceiveMessageInfo> receiveQueue;
         private BlockingCollection<SendMessageInfo> sendQueue = new BlockingCollection<SendMessageInfo>();
 
@@ -143,7 +144,7 @@ namespace Hazel.Udp.FewerThreads
                 }
             }
         }
-        
+
         private void ManageReliablePackets()
         {
             while (this.isActive)

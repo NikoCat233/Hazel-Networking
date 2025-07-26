@@ -35,7 +35,7 @@ namespace Hazel.Udp
             this.socket = CreateSocket(ipMode);
             this.socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ExclusiveAddressUse, true);
         }
-        
+
         ~UnityUdpClientConnection()
         {
             this.Dispose(false);

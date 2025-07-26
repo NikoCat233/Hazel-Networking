@@ -123,7 +123,7 @@ namespace Hazel.UPnP
                     }
                 }
             }
-            
+
             return IPAddress.Broadcast;
         }
 

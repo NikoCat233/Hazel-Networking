@@ -28,9 +28,9 @@ namespace Hazel.UnitTests.Dtls
             using (X25519EcdheRsaSha256 cipherSuite = new X25519EcdheRsaSha256(this.bufferPool, this.random))
             {
                 int expectedSize = cipherSuite.CalculateServerMessageSize(this.privateKey);
-                Assert.IsTrue(expectedSize/2 > 1);
+                Assert.IsTrue(expectedSize / 2 > 1);
 
-                data = new byte[expectedSize/2];
+                data = new byte[expectedSize / 2];
                 random.GetBytes(data);
             }
 
@@ -161,7 +161,7 @@ namespace Hazel.UnitTests.Dtls
             }
 
             // overwrite signature with random data
-            byte[] randomSignature = new byte[this.privateKey.KeySize/8];
+            byte[] randomSignature = new byte[this.privateKey.KeySize / 8];
             random.GetBytes(randomSignature);
             new ByteSpan(randomSignature).CopyTo(new ByteSpan(data, data.Length - randomSignature.Length, randomSignature.Length));
 

@@ -1,13 +1,11 @@
-using System;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.Net;
-using System.Threading;
 using Hazel.Udp;
 using Hazel.Udp.FewerThreads;
-using System.Net.Sockets;
-using System.Linq;
-using System.Collections;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 
 namespace Hazel.UnitTests
 {
@@ -200,7 +198,7 @@ namespace Hazel.UnitTests
                 {
                     var udpConn = (UdpConnection)e.Connection;
                     udpConn.KeepAliveInterval = Timeout.Infinite; // Don't let pings interfere.
-                    
+
                     e.Connection.DataReceived += delegate (DataReceivedEventArgs evt)
                     {
                         output = evt.Message.Duplicate();
@@ -297,7 +295,7 @@ namespace Hazel.UnitTests
 
                         capture.SendToLocalSemaphore.Release(); // Actually let it send.
                         capture.AssertPacketsToLocalCountEquals(0);
-                        
+
                         // Allow time to prevent out of order (probably)
                         Thread.Sleep(100);
                     }
@@ -518,7 +516,7 @@ namespace Hazel.UnitTests
         [TestMethod]
         public void MixedConnectionTest()
         {
-            
+
             using (ThreadLimitedUdpConnectionListener listener2 = this.CreateListener(4, new IPEndPoint(IPAddress.IPv6Any, 4296), new ConsoleLogger(true), IPMode.IPv6))
             {
                 listener2.Start();
@@ -584,7 +582,7 @@ namespace Hazel.UnitTests
                 TestHelper.RunServerToClientTest(listener, connection, 10, SendOption.Reliable);
             }
         }
-        
+
         /// <summary>
         ///     Tests server to client unreliable communication on the UdpConnection.
         /// </summary>

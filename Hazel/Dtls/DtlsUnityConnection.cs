@@ -355,7 +355,7 @@ namespace Hazel.Dtls
         protected override void WriteBytesToConnection(SmartBuffer bytes, int length)
         {
             using SmartBuffer wireData = this.WriteBytesToConnectionInternal(bytes, length);
-            
+
             if (wireData.Length > 0)
             {
                 base.WriteBytesToConnection(wireData, wireData.Length);
@@ -366,7 +366,7 @@ namespace Hazel.Dtls
         protected override void WriteBytesToConnectionSync(SmartBuffer bytes, int length)
         {
             using SmartBuffer wireData = this.WriteBytesToConnectionInternal(bytes, length);
-            
+
             if (wireData.Length > 0)
             {
                 base.WriteBytesToConnectionSync(wireData, wireData.Length);
@@ -586,7 +586,7 @@ namespace Hazel.Dtls
                         return false;
                     }
 
-                    originalPayload = originalPayload.Slice(0, (int)(Handshake.Size + handshake.Length));                    
+                    originalPayload = originalPayload.Slice(0, (int)(Handshake.Size + handshake.Length));
                     message = message.Slice((int)handshake.Length);
                 }
 
@@ -709,8 +709,9 @@ namespace Hazel.Dtls
                             }
 
                             payload.CopyTo(this.nextEpoch.CertificatePayload.Slice((int)handshake.FragmentOffset, (int)handshake.FragmentLength));
-                            this.nextEpoch.CertificateFragments.Add(new FragmentRange {Offset = (int)handshake.FragmentOffset, Length = (int)handshake.FragmentLength });
-                            this.nextEpoch.CertificateFragments.Sort((FragmentRange lhs, FragmentRange rhs) => {
+                            this.nextEpoch.CertificateFragments.Add(new FragmentRange { Offset = (int)handshake.FragmentOffset, Length = (int)handshake.FragmentLength });
+                            this.nextEpoch.CertificateFragments.Sort((FragmentRange lhs, FragmentRange rhs) =>
+                            {
                                 return lhs.Offset.CompareTo(rhs.Offset);
                             });
 
@@ -1158,7 +1159,7 @@ namespace Hazel.Dtls
                 + Record.Size + keyExchangeRecord.Length
                 + Record.Size + changeCipherSpecRecord.Length
                 + Record.Size + finishedRecord.Length;
-                ;
+            ;
 
             using SmartBuffer buffer = this.bufferPool.GetObject();
             buffer.Length = packetLength;

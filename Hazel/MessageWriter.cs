@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 
 namespace Hazel
@@ -18,7 +17,7 @@ namespace Hazel
         public SendOption SendOption { get; private set; }
 
         private Stack<int> messageStarts = new Stack<int>();
-        
+
         public MessageWriter(byte[] buffer)
         {
             this.Buffer = buffer;

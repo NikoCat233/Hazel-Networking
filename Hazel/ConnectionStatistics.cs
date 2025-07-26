@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
+﻿using System.Threading;
 
 
 namespace Hazel
@@ -221,7 +217,7 @@ namespace Hazel
                 return UnreliableMessagesReceived + ReliableMessagesReceived + FragmentedMessagesReceived + AcknowledgementMessagesReceived + helloMessagesReceived;
             }
         }
-        
+
         /// <summary>
         ///     The number of unreliable messages received.
         /// </summary>
@@ -408,7 +404,7 @@ namespace Hazel
         {
             Interlocked.Increment(ref unreliableMessagesSent);
             Interlocked.Add(ref dataBytesSent, dataLength);
-            
+
         }
 
         /// <param name="totalLength">The total number of bytes sent.</param>

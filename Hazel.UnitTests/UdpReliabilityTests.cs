@@ -1,7 +1,5 @@
-﻿using System;
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Collections.Generic;
-using Hazel.Udp;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hazel.UnitTests
 {
@@ -22,12 +20,12 @@ namespace Hazel.UnitTests
             MessageWriter data = MessageWriter.Get(SendOption.Reliable);
 
             Assert.AreEqual(ushort.MaxValue, dut.ReliableReceiveLast);
-                        
+
             SetReliableId(data, 10);
             dut.Test_Receive(data);
 
             // This message may not be received if there is an off-by-one error when marking missed pkts up to 10.
-            SetReliableId(data, 9); 
+            SetReliableId(data, 9);
             dut.Test_Receive(data);
 
             // Both messages should be received.

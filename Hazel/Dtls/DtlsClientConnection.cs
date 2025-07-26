@@ -7,7 +7,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Threading;
 
 namespace Hazel.Dtls
 {
@@ -751,7 +750,8 @@ namespace Hazel.Dtls
 
                             payload.CopyTo(this.nextEpoch.CertificatePayload.Slice((int)handshake.FragmentOffset, (int)handshake.FragmentLength));
                             this.nextEpoch.CertificateFragments.Add(new FragmentRange { Offset = (int)handshake.FragmentOffset, Length = (int)handshake.FragmentLength });
-                            this.nextEpoch.CertificateFragments.Sort((FragmentRange lhs, FragmentRange rhs) => {
+                            this.nextEpoch.CertificateFragments.Sort((FragmentRange lhs, FragmentRange rhs) =>
+                            {
                                 return lhs.Offset.CompareTo(rhs.Offset);
                             });
 

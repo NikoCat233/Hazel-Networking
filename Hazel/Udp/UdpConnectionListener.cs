@@ -38,10 +38,10 @@ namespace Hazel.Udp
             this.IPMode = ipMode;
 
             this.socket = UdpConnection.CreateSocket(this.IPMode);
-            
+
             socket.ReceiveBufferSize = SendReceiveBufferSize;
             socket.SendBufferSize = SendReceiveBufferSize;
-            
+
             reliablePacketTimer = new Timer(ManageReliablePackets, null, 100, Timeout.Infinite);
         }
 
@@ -49,7 +49,7 @@ namespace Hazel.Udp
         {
             this.Dispose(false);
         }
-        
+
         private void ManageReliablePackets(object state)
         {
             foreach (var kvp in this.allConnections)

@@ -1,7 +1,5 @@
-﻿using System;
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.IO;
-using System.Linq;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hazel.UnitTests
 {
@@ -132,10 +130,10 @@ namespace Hazel.UnitTests
             two.RemoveMessage(three);
 
             // Reader becomes invalid
-            Assert.AreNotEqual(Test3, three.ReadByte()); 
+            Assert.AreNotEqual(Test3, three.ReadByte());
 
             // Unrealistic, but nice. Earlier data is not affected
-            Assert.AreEqual(Test0, zero.ReadByte()); 
+            Assert.AreEqual(Test0, zero.ReadByte());
 
             // Continuing to read depth-first works
             var four = two.ReadMessage();
@@ -956,7 +954,7 @@ namespace Hazel.UnitTests
         public void ReadMessageProtectsAgainstOverrun()
         {
             const string TestDataFromAPreviousPacket = "You shouldn't be able to see this data";
-            
+
             // An extra byte from the length of TestData when written via MessageWriter
             // Extra 3 bytes for the length + tag header for ReadMessage.
             int DataLength = TestDataFromAPreviousPacket.Length + 1 + 3;
@@ -970,7 +968,7 @@ namespace Hazel.UnitTests
             MessageWriter writer = MessageWriter.Get(SendOption.None);
 
             // This is the malicious length. No data in this message, so it should be zero.
-            writer.Write((ushort)1); 
+            writer.Write((ushort)1);
             writer.Write((byte)0); // Tag
 
             // This is data from a "previous packet"

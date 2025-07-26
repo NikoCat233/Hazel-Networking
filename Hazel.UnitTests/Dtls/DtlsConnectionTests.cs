@@ -4,7 +4,6 @@ using Hazel.Udp.FewerThreads;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
@@ -118,11 +117,13 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                 {
                     serverConnected = true;
                     signal.Release();
-                    evt.Connection.Disconnected += (o, et) => {
+                    evt.Connection.Disconnected += (o, et) =>
+                    {
                         serverDisconnected = true;
                     };
                 };
-                connection.Disconnected += (o, evt) => {
+                connection.Disconnected += (o, evt) =>
+                {
                     clientDisconnected = true;
                     signal.Release();
                 };
@@ -237,10 +238,12 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                     connectionId = ((ThreadLimitedUdpServerConnection)evt.Connection).ConnectionId;
 
                     signal.Release();
-                    evt.Connection.Disconnected += (o, et) => {
+                    evt.Connection.Disconnected += (o, et) =>
+                    {
                     };
                 };
-                connection.Disconnected += (o, evt) => {
+                connection.Disconnected += (o, evt) =>
+                {
                     signal.Release();
                 };
 
@@ -293,10 +296,12 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                     connectionId = ((ThreadLimitedUdpServerConnection)evt.Connection).ConnectionId;
 
                     signal.Release();
-                    evt.Connection.Disconnected += (o, et) => {
+                    evt.Connection.Disconnected += (o, et) =>
+                    {
                     };
                 };
-                connection.Disconnected += (o, evt) => {
+                connection.Disconnected += (o, evt) =>
+                {
                     signal.Release();
                 };
 
@@ -335,7 +340,8 @@ IsdbLCwHYD3GVgk/D7NVxyU=
             {
                 Semaphore listenerToConnectionThrottle = new Semaphore(0, int.MaxValue);
                 capture.SendToLocalSemaphore = listenerToConnectionThrottle;
-                Thread throttleThread = new Thread(() => {
+                Thread throttleThread = new Thread(() =>
+                {
                     // HelloVerifyRequest
                     capture.AssertPacketsToLocalCountEquals(1);
                     listenerToConnectionThrottle.Release(1);
@@ -370,11 +376,13 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                 {
                     serverConnected = true;
                     signal.Release();
-                    evt.Connection.Disconnected += (o, et) => {
+                    evt.Connection.Disconnected += (o, et) =>
+                    {
                         serverDisconnected = true;
                     };
                 };
-                connection.Disconnected += (o, evt) => {
+                connection.Disconnected += (o, evt) =>
+                {
                     clientDisconnected = true;
                     signal.Release();
                 };
@@ -417,7 +425,8 @@ IsdbLCwHYD3GVgk/D7NVxyU=
             {
                 Semaphore listenerToConnectionThrottle = new Semaphore(0, int.MaxValue);
                 capture.SendToLocalSemaphore = listenerToConnectionThrottle;
-                Thread throttleThread = new Thread(() => {
+                Thread throttleThread = new Thread(() =>
+                {
                     // Trigger resend of HelloVerifyRequest
                     capture.DiscardPacketForLocal();
 
@@ -432,7 +441,7 @@ IsdbLCwHYD3GVgk/D7NVxyU=
 
                     // Trigger a resend of ServerKeyExchange, ServerHelloDone
                     capture.DiscardPacketForLocal();
-                    
+
                     // From here, flush everything. We recover or not.
                     capture.SendToLocalSemaphore = null;
                     listenerToConnectionThrottle.Release(1);
@@ -446,11 +455,13 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                 {
                     serverConnected = true;
                     signal.Release();
-                    evt.Connection.Disconnected += (o, et) => {
+                    evt.Connection.Disconnected += (o, et) =>
+                    {
                         serverDisconnected = true;
                     };
                 };
-                connection.Disconnected += (o, evt) => {
+                connection.Disconnected += (o, evt) =>
+                {
                     clientDisconnected = true;
                     signal.Release();
                 };
@@ -490,7 +501,8 @@ IsdbLCwHYD3GVgk/D7NVxyU=
             {
                 Semaphore listenerToConnectionThrottle = new Semaphore(0, int.MaxValue);
                 capture.SendToLocalSemaphore = listenerToConnectionThrottle;
-                Thread throttleThread = new Thread(() => {
+                Thread throttleThread = new Thread(() =>
+                {
                     // HelloVerifyRequest
                     capture.AssertPacketsToLocalCountEquals(1);
                     listenerToConnectionThrottle.Release(1);
@@ -517,11 +529,13 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                 {
                     serverConnected = true;
                     signal.Release();
-                    evt.Connection.Disconnected += (o, et) => {
+                    evt.Connection.Disconnected += (o, et) =>
+                    {
                         serverDisconnected = true;
                     };
                 };
-                connection.Disconnected += (o, evt) => {
+                connection.Disconnected += (o, evt) =>
+                {
                     clientDisconnected = true;
                     signal.Release();
                 };
@@ -568,11 +582,13 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                 {
                     serverConnected = true;
                     signal.Release();
-                    evt.Connection.Disconnected += (o, et) => {
+                    evt.Connection.Disconnected += (o, et) =>
+                    {
                         serverDisconnected = true;
                     };
                 };
-                connection.Disconnected += (o, evt) => {
+                connection.Disconnected += (o, evt) =>
+                {
                     clientDisconnected = true;
                     signal.Release();
                 };

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 
 namespace Hazel.Udp
 {
@@ -90,7 +89,7 @@ namespace Hazel.Udp
                 return;
             }
 
-            if (numBytes < 3 
+            if (numBytes < 3
                 || buffer[0] != 4 || buffer[1] != 2)
             {
                 this.StartListen();

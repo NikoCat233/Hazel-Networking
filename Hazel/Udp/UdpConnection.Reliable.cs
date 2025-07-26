@@ -258,7 +258,7 @@ namespace Hazel.Udp
 
             using SmartBuffer buffer = this.bufferPool.GetObject();
             buffer.Length = data.Length + 3;
-            
+
             // Add message type, reliable id, and data
             buffer[0] = sendOption;
             AttachReliableID(buffer, 1, buffer.Length, ackCallback);
@@ -327,7 +327,7 @@ namespace Hazel.Udp
              */
 
             bool result = true;
-            
+
             lock (reliableDataPacketsMissing)
             {
                 //Calculate overwritePointer
@@ -339,7 +339,7 @@ namespace Hazel.Udp
                     isNew = id > reliableReceiveLast || id <= overwritePointer;     //Figure (2)
                 else
                     isNew = id > reliableReceiveLast && id <= overwritePointer;     //Figure (3)
-                
+
                 //If it's new or we've not received anything yet
                 if (isNew)
                 {
@@ -363,7 +363,7 @@ namespace Hazel.Udp
                     //Update the most recently received
                     reliableReceiveLast = id;
                 }
-                
+
                 //Else it could be a missing packet
                 else
                 {

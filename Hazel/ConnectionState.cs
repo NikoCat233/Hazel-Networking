@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace Hazel
+﻿namespace Hazel
 {
     /// <summary>
     ///     Represents the state a <see cref="Connection"/> is currently in.
@@ -14,7 +9,7 @@ namespace Hazel
         ///     The Connection has either not been established yet or has been disconnected.
         /// </summary>
         NotConnected,
-        
+
         /// <summary>
         ///     The Connection is currently connecting to an endpoint.
         /// </summary>

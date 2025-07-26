@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -204,7 +203,7 @@ namespace Hazel
         public void InsertMessage(MessageReader reader, MessageWriter writer)
         {
             var temp = MessageReader.GetSized(reader.Buffer.Length);
-            try 
+            try
             {
                 var headerOffset = reader.Offset - 3;
                 var startOfMessage = reader.Offset;
@@ -219,17 +218,17 @@ namespace Hazel
                         writerOffset = 1;
                         break;
                 }
-                
+
                 //store the original buffer in temp
                 Array.Copy(reader.Buffer, headerOffset, temp.Buffer, 0, len);
 
                 //put the contents of writer in at headerOffset
-                Array.Copy(writer.Buffer, writerOffset, this.Buffer, headerOffset, writer.Length-writerOffset);
+                Array.Copy(writer.Buffer, writerOffset, this.Buffer, headerOffset, writer.Length - writerOffset);
 
                 //put the original buffer in after that
-                Array.Copy(temp.Buffer, 0, this.Buffer, headerOffset + (writer.Length-writerOffset), len - writer.Length);
+                Array.Copy(temp.Buffer, 0, this.Buffer, headerOffset + (writer.Length - writerOffset), len - writer.Length);
 
-                this.AdjustLength(-1 * reader.Offset , -1 * (writer.Length - writerOffset));
+                this.AdjustLength(-1 * reader.Offset, -1 * (writer.Length - writerOffset));
             }
             finally
             {

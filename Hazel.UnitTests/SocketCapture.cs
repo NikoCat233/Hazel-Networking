@@ -1,6 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -295,7 +294,7 @@ namespace Hazel.UnitTests
         internal string PacketsForLocalToString()
         {
             StringBuilder sb = new StringBuilder();
-            foreach(var item in this.forLocal)
+            foreach (var item in this.forLocal)
             {
                 sb.AppendLine(item.ToString());
             }
