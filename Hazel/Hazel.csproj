@@ -9,6 +9,7 @@
 		<Company>NikoCat233</Company>
 		<Product>Hazel Networking</Product>
 		<Title>Hazel Networking</Title>
+		<Version>1.0.1</Version>
 		<Description>
 Hazel Networking is a low-level networking library for C# providing connection-oriented, message based communication via UDP, RUDP and/or DTLS.
 		</Description>
