@@ -243,7 +243,7 @@ namespace Hazel.Udp
         /// </summary>
         /// <param name="bytes">The bytes to send.</param>
         /// <param name="endPoint">The endpoint to send to.</param>
-        internal void SendData(SmartBuffer bytes, int length, EndPoint endPoint)
+        internal void SendData(SmartBuffer bytes, int length, EndPoint endPoint, Action<SocketException> onError = null)
         {
             if (length > bytes.Length)
             {
@@ -260,9 +260,11 @@ namespace Hazel.Udp
             }
 #endif
 
+            bool addedUsage = false;
             try
             {
                 bytes.AddUsage();
+                addedUsage = true;
                 socket.BeginSendTo(
                     (byte[])bytes,
                     0,
@@ -270,31 +272,64 @@ namespace Hazel.Udp
                     SocketFlags.None,
                     endPoint,
                     SendCallback,
-                    bytes);
+                    new SendContext(bytes, onError));
 
                 this.Statistics.AddBytesSent(length);
             }
             catch (SocketException e)
             {
-                this.Logger?.WriteError("Could not send data as a SocketException occurred: " + e);
+                if (addedUsage)
+                {
+                    bytes.Recycle();
+                }
+
+                if (onError != null)
+                {
+                    onError(e);
+                }
+                else
+                {
+                    this.Logger?.WriteError("Could not send data as a SocketException occurred: " + e);
+                }
             }
             catch (ObjectDisposedException)
             {
                 //Keep alive timer probably ran, ignore
+                if (addedUsage)
+                {
+                    bytes.Recycle();
+                }
                 return;
+            }
+        }
+
+        private sealed class SendContext
+        {
+            public SmartBuffer Buffer;
+            public Action<SocketException> OnError;
+
+            public SendContext(SmartBuffer buffer, Action<SocketException> onError)
+            {
+                Buffer = buffer;
+                OnError = onError;
             }
         }
 
         private void SendCallback(IAsyncResult result)
         {
+            var ctx = (SendContext)result.AsyncState;
             try
             {
                 socket.EndSendTo(result);
             }
+            catch (SocketException ex)
+            {
+                ctx.OnError?.Invoke(ex);
+            }
             catch { }
             finally
             {
-                ((SmartBuffer)result.AsyncState).Recycle();
+                ctx.Buffer.Recycle();
             }
         }
 

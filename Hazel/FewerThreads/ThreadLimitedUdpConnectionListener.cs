@@ -17,6 +17,7 @@ namespace Hazel.Udp.FewerThreads
         {
             public SmartBuffer Span;
             public IPEndPoint Recipient;
+            public Action<SocketException> OnError;
         }
 
         private struct ReceiveMessageInfo
@@ -258,6 +259,16 @@ namespace Hazel.Udp.FewerThreads
                         break;
                     }
                 }
+                catch (SocketException ex)
+                {
+                    msg.OnError?.Invoke(ex);
+                    if (msg.OnError == null)
+                    {
+                        this.Logger.WriteError("Error in loop while sending: " + ex.Message);
+                    }
+
+                    Thread.Sleep(1);
+                }
                 catch (Exception e)
                 {
                     this.Logger.WriteError("Error in loop while sending: " + e.Message);
@@ -337,15 +348,15 @@ namespace Hazel.Udp.FewerThreads
             connection.HandleReceive(message, bytesReceived);
         }
 
-        internal void SendDataRaw(SmartBuffer response, IPEndPoint remoteEndPoint)
+        internal void SendDataRaw(SmartBuffer response, IPEndPoint remoteEndPoint, Action<SocketException> onError = null)
         {
-            QueueRawData(response, remoteEndPoint);
+            QueueRawData(response, remoteEndPoint, onError);
         }
 
-        protected virtual void QueueRawData(SmartBuffer span, IPEndPoint remoteEndPoint)
+        protected virtual void QueueRawData(SmartBuffer span, IPEndPoint remoteEndPoint, Action<SocketException> onError)
         {
             span.AddUsage();
-            this.sendQueue.TryAdd(new SendMessageInfo() { Span = span, Recipient = remoteEndPoint });
+            this.sendQueue.TryAdd(new SendMessageInfo() { Span = span, Recipient = remoteEndPoint, OnError = onError });
         }
 
         /// <summary>

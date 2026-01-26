@@ -33,13 +33,14 @@ namespace Hazel.Udp
 
             State = ConnectionState.Connected;
             this.InitializeKeepAliveTimer();
+            this.StartMtuDiscovery();
         }
 
         /// <inheritdoc />
-        protected override void WriteBytesToConnection(SmartBuffer bytes, int length)
+        protected override void WriteBytesToConnection(SmartBuffer bytes, int length, Action<System.Net.Sockets.SocketException> onError = null)
         {
             this.Statistics.LogPacketSend(length);
-            Listener.SendData(bytes, length, EndPoint);
+            Listener.SendData(bytes, length, EndPoint, onError);
         }
 
         /// <inheritdoc />

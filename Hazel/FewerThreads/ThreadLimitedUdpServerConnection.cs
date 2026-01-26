@@ -38,10 +38,11 @@ namespace Hazel.Udp.FewerThreads
 
             State = ConnectionState.Connected;
             this.InitializeKeepAliveTimer();
+            this.StartMtuDiscovery();
         }
 
         /// <inheritdoc />
-        protected override void WriteBytesToConnection(SmartBuffer bytes, int length)
+        protected override void WriteBytesToConnection(SmartBuffer bytes, int length, Action<System.Net.Sockets.SocketException> onError = null)
         {
             if (bytes.Length != length) throw new ArgumentException("I made an assumption here. I hope you see this error.");
 
@@ -49,7 +50,7 @@ namespace Hazel.Udp.FewerThreads
             // but I don't want to have a bunch of client references in the send queue...
             // Does this perhaps mean the encryption is being done in the wrong class?
             this.Statistics.LogPacketSend(length);
-            Listener.SendDataRaw(bytes, EndPoint);
+            Listener.SendDataRaw(bytes, EndPoint, onError);
         }
 
         /// <inheritdoc />
