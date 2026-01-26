@@ -229,6 +229,16 @@ namespace Hazel.Udp
             // subsequent messages can happen before the NewConnection event sets up OnDataRecieved handlers
             if (!aware)
             {
+                // Negotiate capabilities using the hello version byte.
+                // Layout: [SendOption(1)][ReliableId(2)][HelloVersion(1)]...
+                if (bytesReceived >= 4)
+                {
+                    connection.SetRemoteHelloVersion(message.Buffer[3]);
+                }
+
+                // Send our hello version back so the client can negotiate too.
+                connection.SendHelloResponse();
+
                 // Skip header and hello byte;
                 message.Offset = 4;
                 message.Length = bytesReceived - 4;
