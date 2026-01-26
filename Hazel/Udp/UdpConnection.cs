@@ -11,21 +11,30 @@ namespace Hazel.Udp
     {
         protected readonly ObjectPool<SmartBuffer> bufferPool;
 
+        /// <summary>
+        /// Whether application-level fragmentation and MTU discovery are enabled for this connection.
+        /// When disabled (default), Hazel will not automatically fragment outgoing reliable packets
+        /// and will not perform MTU discovery.
+        /// </summary>
+        public bool FragmentationEnabled { get; }
+
         public static readonly byte[] EmptyDisconnectBytes = new byte[] { (byte)UdpSendOption.Disconnect };
 
         public override float AveragePingMs => this._pingMs;
         protected readonly ILogger logger;
 
 
-        public UdpConnection(ILogger logger) : base()
+        public UdpConnection(ILogger logger, bool enableFragmentation = false) : base()
         {
             this.bufferPool = new ObjectPool<SmartBuffer>(() => new SmartBuffer(this.bufferPool, 1024));
 
             this.logger = logger;
             this.PacketPool = new ObjectPool<Packet>(() => new Packet(this));
+
+            this.FragmentationEnabled = enableFragmentation;
         }
 
-        internal static Socket CreateSocket(IPMode ipMode)
+        internal static Socket CreateSocket(IPMode ipMode, bool enableFragmentation = false)
         {
             Socket socket;
             if (ipMode == IPMode.IPv4)
@@ -41,13 +50,16 @@ namespace Hazel.Udp
                 socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.IPv6Only, false);
             }
 
-            try
+            if (enableFragmentation)
             {
-                // We do our own application-level fragmentation. Enabling this helps
-                // us detect MTU issues via SocketException (MessageSize) for MTU discovery.
-                socket.DontFragment = true;
+                try
+                {
+                    // We do our own application-level fragmentation. Enabling this helps
+                    // us detect MTU issues via SocketException (MessageSize) for MTU discovery.
+                    socket.DontFragment = true;
+                }
+                catch { }
             }
-            catch { }
 
             try
             {
@@ -73,14 +85,15 @@ namespace Hazel.Udp
                 return SendErrors.Disconnected;
             }
 
-            // We handle fragmentation at the application layer for reliable packets.
-            // Unreliable packets must always fit within the MTU.
-            if (msg.SendOption != SendOption.Reliable && msg.Length > this.Mtu)
-            {
-                throw new HazelException("Unreliable messages can't be bigger than MTU");
-            }
+            // Optional application-level fragmentation and MTU discovery.
+            // If enabled, we can fragment large reliable messages. For unreliable messages
+            // that exceed the MTU we only log a warning and attempt to send without killing
+            // the connection.
+            var isOversizeUnreliable = this.FragmentationEnabled
+                && msg.SendOption != SendOption.Reliable
+                && msg.Length > this.Mtu;
 
-            if (msg.SendOption == SendOption.Reliable && msg.Length > this.Mtu)
+            if (this.FragmentationEnabled && msg.SendOption == SendOption.Reliable && msg.Length > this.Mtu)
             {
                 ResetKeepAliveTimer();
                 FragmentedSend((byte)SendOption.Reliable, msg.ToByteArray(false));
@@ -103,7 +116,16 @@ namespace Hazel.Udp
                         break;
 
                     default:
-                        WriteBytesToConnection(buffer, msg.Length);
+                        if (isOversizeUnreliable)
+                        {
+                            this.logger?.WriteWarning($"Attempted to send unreliable message of size {msg.Length} which exceeds MTU {this.Mtu}. The packet may be dropped.");
+                            // Provide an error handler so we don't disconnect on MessageSize errors.
+                            WriteBytesToConnection(buffer, msg.Length, _ => { });
+                        }
+                        else
+                        {
+                            WriteBytesToConnection(buffer, msg.Length);
+                        }
                         Statistics.LogUnreliableSend(msg.Length - 1);
                         break;
                 }
@@ -187,13 +209,29 @@ namespace Hazel.Udp
                     break;
 
                 case (byte)UdpSendOption.MtuTest:
-                    MtuTestMessageReceive(message);
-                    message.Recycle();
+                    if (this.FragmentationEnabled)
+                    {
+                        MtuTestMessageReceive(message);
+                        message.Recycle();
+                    }
+                    else
+                    {
+                        message.Recycle();
+                        Statistics.LogUnreliableReceive(bytesReceived - 1, bytesReceived);
+                    }
                     break;
 
                 case (byte)UdpSendOption.Fragment:
-                    FragmentMessageReceive(message, bytesReceived);
-                    message.Recycle();
+                    if (this.FragmentationEnabled)
+                    {
+                        FragmentMessageReceive(message, bytesReceived);
+                        message.Recycle();
+                    }
+                    else
+                    {
+                        message.Recycle();
+                        Statistics.LogUnreliableReceive(bytesReceived - 1, bytesReceived);
+                    }
                     break;
 
                 // Treat everything else as garbage
@@ -225,9 +263,10 @@ namespace Hazel.Udp
         /// <param name="length"></param>
         void UnreliableSend(byte sendOption, byte[] data, int offset, int length)
         {
-            if (length + 1 > this.Mtu)
+            var isOversize = this.FragmentationEnabled && (length + 1 > this.Mtu);
+            if (isOversize)
             {
-                throw new HazelException("Unreliable messages can't be bigger than MTU");
+                this.logger?.WriteWarning($"Attempted to send unreliable message of size {length + 1} which exceeds MTU {this.Mtu}. The packet may be dropped.");
             }
 
             using SmartBuffer buffer = this.bufferPool.GetObject();
@@ -237,7 +276,15 @@ namespace Hazel.Udp
             buffer[0] = sendOption;
             Buffer.BlockCopy(data, offset, (byte[])buffer, buffer.Length - length, length);
 
-            WriteBytesToConnection(buffer, buffer.Length);
+            if (isOversize)
+            {
+                // Provide an error handler so we don't disconnect on MessageSize errors.
+                WriteBytesToConnection(buffer, buffer.Length, _ => { });
+            }
+            else
+            {
+                WriteBytesToConnection(buffer, buffer.Length);
+            }
             Statistics.LogUnreliableSend(length);
         }
 

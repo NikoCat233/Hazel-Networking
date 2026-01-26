@@ -32,6 +32,11 @@ namespace Hazel.Udp.FewerThreads
         private Socket socket;
         protected ILogger Logger;
 
+        /// <summary>
+        /// Whether application-level fragmentation and MTU discovery are enabled for connections created by this listener.
+        /// </summary>
+        public bool FragmentationEnabled { get; }
+
         private Thread reliablePacketThread;
         private Thread receiveThread;
         private Thread sendThread;
@@ -106,15 +111,17 @@ namespace Hazel.Udp.FewerThreads
 
         private bool isActive;
 
-        public ThreadLimitedUdpConnectionListener(int numWorkers, IPEndPoint endPoint, ILogger logger, IPMode ipMode = IPMode.IPv4)
+        public ThreadLimitedUdpConnectionListener(int numWorkers, IPEndPoint endPoint, ILogger logger, IPMode ipMode = IPMode.IPv4, bool enableFragmentation = false)
         {
             this.Logger = logger;
             this.EndPoint = endPoint;
             this.IPMode = ipMode;
 
+            this.FragmentationEnabled = enableFragmentation;
+
             this.receiveQueue = new BlockingCollection<ReceiveMessageInfo>(10000);
 
-            this.socket = UdpConnection.CreateSocket(this.IPMode);
+            this.socket = UdpConnection.CreateSocket(this.IPMode, enableFragmentation);
             this.socket.ExclusiveAddressUse = true;
             this.socket.Blocking = false;
 
@@ -316,7 +323,7 @@ namespace Hazel.Udp.FewerThreads
                         }
 
                         aware = false;
-                        connection = new ThreadLimitedUdpServerConnection(this, connectionId, remoteEndPoint, this.IPMode, this.Logger);
+                        connection = new ThreadLimitedUdpServerConnection(this, connectionId, remoteEndPoint, this.IPMode, this.Logger, this.FragmentationEnabled);
                         if (!this.allConnections.TryAdd(connectionId, connection))
                         {
                             throw new HazelException("Failed to add a connection. This should never happen.");

@@ -20,6 +20,11 @@ namespace Hazel.Udp
         private ILogger Logger;
         private Timer reliablePacketTimer;
 
+        /// <summary>
+        /// Whether application-level fragmentation and MTU discovery are enabled for connections created by this listener.
+        /// </summary>
+        public bool FragmentationEnabled { get; }
+
         private ConcurrentDictionary<EndPoint, UdpServerConnection> allConnections = new ConcurrentDictionary<EndPoint, UdpServerConnection>();
 
         public override double AveragePing => this.allConnections.Values.Sum(c => c.AveragePingMs) / this.allConnections.Count;
@@ -31,13 +36,15 @@ namespace Hazel.Udp
         ///     Creates a new UdpConnectionListener for the given <see cref="IPAddress"/>, port and <see cref="IPMode"/>.
         /// </summary>
         /// <param name="endPoint">The endpoint to listen on.</param>
-        public UdpConnectionListener(IPEndPoint endPoint, IPMode ipMode = IPMode.IPv4, ILogger logger = null)
+        public UdpConnectionListener(IPEndPoint endPoint, IPMode ipMode = IPMode.IPv4, ILogger logger = null, bool enableFragmentation = false)
         {
             this.Logger = logger;
             this.EndPoint = endPoint;
             this.IPMode = ipMode;
 
-            this.socket = UdpConnection.CreateSocket(this.IPMode);
+            this.FragmentationEnabled = enableFragmentation;
+
+            this.socket = UdpConnection.CreateSocket(this.IPMode, enableFragmentation);
             
             socket.ReceiveBufferSize = SendReceiveBufferSize;
             socket.SendBufferSize = SendReceiveBufferSize;
@@ -208,7 +215,7 @@ namespace Hazel.Udp
                         }
 
                         aware = false;
-                        connection = new UdpServerConnection(this, (IPEndPoint)remoteEndPoint, this.IPMode, this.Logger);
+                        connection = new UdpServerConnection(this, (IPEndPoint)remoteEndPoint, this.IPMode, this.Logger, this.FragmentationEnabled);
                         if (!this.allConnections.TryAdd(remoteEndPoint, connection))
                         {
                             throw new HazelException("Failed to add a connection. This should never happen.");

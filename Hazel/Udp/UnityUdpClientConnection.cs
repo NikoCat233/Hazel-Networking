@@ -26,13 +26,13 @@ namespace Hazel.Udp
 
         private Socket socket;
 
-        public UnityUdpClientConnection(ILogger logger, IPEndPoint remoteEndPoint, IPMode ipMode = IPMode.IPv4)
-            : base(logger)
+        public UnityUdpClientConnection(ILogger logger, IPEndPoint remoteEndPoint, IPMode ipMode = IPMode.IPv4, bool enableFragmentation = false)
+            : base(logger, enableFragmentation)
         {
             this.EndPoint = remoteEndPoint;
             this.IPMode = ipMode;
 
-            this.socket = CreateSocket(ipMode);
+            this.socket = CreateSocket(ipMode, enableFragmentation);
             this.socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ExclusiveAddressUse, true);
         }
         

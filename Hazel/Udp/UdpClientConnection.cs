@@ -45,13 +45,13 @@ namespace Hazel.Udp
         ///     Creates a new UdpClientConnection.
         /// </summary>
         /// <param name="remoteEndPoint">A <see cref="NetworkEndPoint"/> to connect to.</param>
-        public UdpClientConnection(ILogger logger, IPEndPoint remoteEndPoint, IPMode ipMode = IPMode.IPv4)
-            : base(logger)
+        public UdpClientConnection(ILogger logger, IPEndPoint remoteEndPoint, IPMode ipMode = IPMode.IPv4, bool enableFragmentation = false)
+            : base(logger, enableFragmentation)
         {
             this.EndPoint = remoteEndPoint;
             this.IPMode = ipMode;
 
-            this.socket = CreateSocket(ipMode);
+            this.socket = CreateSocket(ipMode, enableFragmentation);
 
             reliablePacketTimer = new Timer(ManageReliablePacketsInternal, null, 100, Timeout.Infinite);
             this.InitializeKeepAliveTimer();

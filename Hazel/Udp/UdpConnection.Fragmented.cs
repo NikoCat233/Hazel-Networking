@@ -48,6 +48,11 @@ namespace Hazel.Udp
 
         protected void StartMtuDiscovery()
         {
+            if (!this.FragmentationEnabled)
+            {
+                return;
+            }
+
             if (ForcedMtu.HasValue)
             {
                 return;
