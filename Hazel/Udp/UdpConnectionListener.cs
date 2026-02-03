@@ -237,7 +237,10 @@ namespace Hazel.Udp
                 }
 
                 // Send our hello version back so the client can negotiate too.
-                connection.SendHelloResponse();
+                if (this.FragmentationEnabled)
+                {
+                    connection.SendHelloResponse();
+                }
 
                 // Skip header and hello byte;
                 message.Offset = 4;
