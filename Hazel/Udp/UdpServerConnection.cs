@@ -33,8 +33,9 @@ namespace Hazel.Udp
 
             State = ConnectionState.Connected;
             this.InitializeKeepAliveTimer();
-            this.StartMtuDiscovery();
         }
+
+        protected override bool UseMtuDiscovery => false;
 
         /// <inheritdoc />
         protected override void WriteBytesToConnection(SmartBuffer bytes, int length, Action<System.Net.Sockets.SocketException> onError = null)

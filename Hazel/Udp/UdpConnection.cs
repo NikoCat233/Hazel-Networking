@@ -33,6 +33,8 @@ namespace Hazel.Udp
         public override float AveragePingMs => this._pingMs;
         protected readonly ILogger logger;
 
+        protected virtual bool UseMtuDiscovery => true;
+
 
         public UdpConnection(ILogger logger, bool enableFragmentation = false) : base()
         {
