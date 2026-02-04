@@ -56,11 +56,20 @@ namespace Hazel.Udp
                 this.FragmentationSupported &&
                 this.RemoteHelloVersion >= HazelHelloVersion.Fragmentation;
 
+            if (wasEnabled != this.FragmentationEnabled)
+            {
+                this.ApplyDontFragment(this.FragmentationEnabled);
+            }
+
             // Start MTU discovery as soon as fragmentation becomes enabled on a connected socket.
             if (!wasEnabled && this.FragmentationEnabled && this._state == ConnectionState.Connected)
             {
                 this.StartMtuDiscovery();
             }
+        }
+
+        protected virtual void ApplyDontFragment(bool dontFragment)
+        {
         }
 
         internal static Socket CreateSocket(IPMode ipMode, bool enableFragmentation = false)
@@ -79,16 +88,12 @@ namespace Hazel.Udp
                 socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.IPv6Only, false);
             }
 
-            if (enableFragmentation)
+            try
             {
-                try
-                {
-                    // We do our own application-level fragmentation. Enabling this helps
-                    // us detect MTU issues via SocketException (MessageSize) for MTU discovery.
-                    socket.DontFragment = true;
-                }
-                catch { }
+                // Default to OS fragmentation. We only enable DontFragment after capability negotiation.
+                socket.DontFragment = false;
             }
+            catch { }
 
             try
             {

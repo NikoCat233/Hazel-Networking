@@ -62,6 +62,15 @@ namespace Hazel.Udp
             }
         }
 
+        protected override void ApplyDontFragment(bool dontFragment)
+        {
+            try
+            {
+                socket.DontFragment = dontFragment;
+            }
+            catch { }
+        }
+
         protected virtual void RestartConnection()
         {
         }

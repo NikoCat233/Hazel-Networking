@@ -72,6 +72,15 @@ namespace Hazel.Udp
             catch { }
         }
 
+        protected override void ApplyDontFragment(bool dontFragment)
+        {
+            try
+            {
+                socket.DontFragment = dontFragment;
+            }
+            catch { }
+        }
+
         /// <inheritdoc />
         protected override void WriteBytesToConnection(SmartBuffer bytes, int length, Action<SocketException> onError = null)
         {
