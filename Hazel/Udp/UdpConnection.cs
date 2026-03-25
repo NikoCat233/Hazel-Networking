@@ -100,7 +100,7 @@ namespace Hazel.Udp
 
             return SendErrors.None;
         }
-        
+
         /// <summary>
         ///     Handles the reliable/fragmented sending from this connection.
         /// </summary>
@@ -117,7 +117,7 @@ namespace Hazel.Udp
                 case (byte)UdpSendOption.Hello:
                     ReliableSend(sendOption, data, ackCallback);
                     break;
-                                    
+
                 //Treat all else as unreliable
                 default:
                     UnreliableSend(sendOption, data);
@@ -244,7 +244,7 @@ namespace Hazel.Udp
 
             HandleSend(actualBytes, (byte)UdpSendOption.Hello, acknowledgeCallback);
         }
-                
+
         /// <inheritdoc/>
         protected override void Dispose(bool disposing)
         {

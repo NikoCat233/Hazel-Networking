@@ -1,10 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Net.Sockets;
 using System.Net;
-using System.Threading;
 
 namespace Hazel
 {
@@ -53,7 +48,7 @@ namespace Hazel
         public int TestLagMs = -1;
         public int TestDropRate = 0;
         protected int testDropCount = 0;
-        
+
         /// <summary>
         ///     Called when the end point disconnects or an error occurs.
         /// </summary>
@@ -103,7 +98,7 @@ namespace Hazel
             {
                 return this._state;
             }
-            
+
             protected set
             {
                 this._state = value;
@@ -113,7 +108,7 @@ namespace Hazel
 
         protected ConnectionState _state;
         protected virtual void SetState(ConnectionState state) { }
-        
+
         /// <summary>
         ///     Constructor that initializes the ConnecitonStatistics object.
         /// </summary>
@@ -132,7 +127,7 @@ namespace Hazel
         /// </summary>
         /// <param name="msg">The message to send.</param>
         public abstract SendErrors Send(MessageWriter msg);
-                
+
         /// <summary>
         ///     Connects the connection to a server and begins listening.
         ///     This method blocks and may thrown if there is a problem connecting.
@@ -208,7 +203,7 @@ namespace Hazel
         /// If you only want to close it, just use Dispose.
         /// </summary>
         public abstract void Disconnect(string reason, MessageWriter writer = null);
-        
+
         /// <summary>
         ///     Disposes of this NetworkConnection.
         /// </summary>

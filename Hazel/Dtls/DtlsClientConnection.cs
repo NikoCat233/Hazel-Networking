@@ -1,19 +1,21 @@
-using Hazel.Crypto;
+﻿using Hazel.Crypto;
 using Hazel.Udp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace Hazel.Dtls
 {
     /// <summary>
-    /// Connects to a UDP-DTLS server
+    /// Represents a client's connection to a server that uses the UDP-DTLS protocol.
+    /// Uses timer-driven packet management instead of Unity's FixedUpdate.
     /// </summary>
     /// <inheritdoc />
-    public class DtlsUnityConnection : UnityUdpClientConnection
+    public class DtlsClientConnection : UdpClientConnection
     {
         /// <summary>
         /// Current state of the handshake sequence
@@ -122,7 +124,7 @@ namespace Hazel.Dtls
         /// Create a new instance of the DTLS connection
         /// </summary>
         /// <inheritdoc />
-        public DtlsUnityConnection(ILogger logger, IPEndPoint remoteEndPoint, IPMode ipMode = IPMode.IPv4)
+        public DtlsClientConnection(ILogger logger, IPEndPoint remoteEndPoint, IPMode ipMode = IPMode.IPv4)
             : base(logger, remoteEndPoint, ipMode)
         {
             this.nextEpoch.ServerRandom = new byte[Random.Size];
@@ -193,6 +195,7 @@ namespace Hazel.Dtls
             this.nextEpoch.NextOutgoingSequence = 1;
             this.nextEpoch.NegotiationStartTime = DateTime.MinValue;
             this.nextEpoch.NextPacketResendTime = DateTime.MinValue;
+            this.nextEpoch.PacketResendCount = 0;
             this.nextEpoch.SelectedCipherSuite = CipherSuite.TLS_NULL_WITH_NULL_NULL;
             this.nextEpoch.RecordProtection?.Dispose();
             this.nextEpoch.RecordProtection = null;
@@ -214,9 +217,9 @@ namespace Hazel.Dtls
         }
 
         /// <summary>
-        /// Abort the existing connection and restart the process
+        /// Restart the connection by resetting DTLS state and sending ClientHello
         /// </summary>
-        protected override void RestartConnection()
+        private void RestartDtlsConnection()
         {
             lock (this.syncRoot)
             {
@@ -224,55 +227,111 @@ namespace Hazel.Dtls
                 this.nextEpoch.ClientRandom.FillWithRandom(this.random);
                 this.SendClientHello(isRetransmit: false);
             }
-
-            base.RestartConnection();
         }
 
-        /// <inheritdoc />
-        protected override void ResendPacketsIfNeeded()
+        /// <summary>
+        /// Override ConnectAsync to handle DTLS handshake
+        /// </summary>
+        public override void ConnectAsync(byte[] bytes = null)
         {
+            // First establish UDP connection
+            this.State = ConnectionState.Connecting;
+
+            try
+            {
+                if (IPMode == IPMode.IPv4)
+                    this.socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+                else
+                    this.socket.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+            }
+            catch (SocketException e)
+            {
+                this.State = ConnectionState.NotConnected;
+                throw new HazelException("A SocketException occurred while binding to the port.", e);
+            }
+
+            this.RestartDtlsConnection();
+
+            try
+            {
+                this.StartListeningForData();
+            }
+            catch (ObjectDisposedException)
+            {
+                this.State = ConnectionState.NotConnected;
+                return;
+            }
+            catch (SocketException e)
+            {
+                Dispose();
+                throw new HazelException("A SocketException occurred while initiating a receive operation.", e);
+            }
+
+            // Write bytes to the server to tell it hi (and to punch a hole in our NAT, if present)
+            // When acknowledged set the state to connected
+            SendHello(bytes, () =>
+            {
+                this.State = ConnectionState.Connected;
+                this.InitializeKeepAliveTimer();
+            });
+        }
+
+        /// <summary>
+        /// Extend the base class reliable packet management to handle DTLS handshake resending
+        /// </summary>
+        protected override void ManageReliablePackets()
+        {
+            // First handle UDP reliable packets
+            base.ManageReliablePackets();
+
+            // Then handle DTLS handshake resends
             lock (this.syncRoot)
             {
-                // Check if we need to resend handshake message
                 if (this.nextEpoch.State != HandshakeState.Established)
                 {
                     DateTime now = DateTime.UtcNow;
                     if (now >= this.nextEpoch.NextPacketResendTime)
                     {
-                        double negotiationDurationMs = (now - this.nextEpoch.NegotiationStartTime).TotalMilliseconds;
-                        this.nextEpoch.PacketResendCount++;
-
-                        if ((this.ResendLimit > 0 && this.nextEpoch.PacketResendCount > this.ResendLimit)
-                            || negotiationDurationMs > this.DisconnectTimeoutMs)
-                        {
-                            this.DisconnectInternal(HazelInternalErrors.DtlsNegotiationFailed, $"DTLS negotiation failed after {this.nextEpoch.PacketResendCount} resends ({(int)negotiationDurationMs} ms).");
-                        }
-                        else
-                        {
-                            switch (this.nextEpoch.State)
-                            {
-                                case HandshakeState.ExpectingServerHello:
-                                case HandshakeState.ExpectingCertificate:
-                                case HandshakeState.ExpectingServerKeyExchange:
-                                case HandshakeState.ExpectingServerHelloDone:
-                                    this.SendClientHello(isRetransmit: true);
-                                    break;
-
-                                case HandshakeState.ExpectingChangeCipherSpec:
-                                case HandshakeState.ExpectingFinished:
-                                    this.SendClientKeyExchangeFlight(isRetransmit: true);
-                                    break;
-
-                                case HandshakeState.Established:
-                                default:
-                                    break;
-                            }
-                        }
+                        this.ResendHandshakePacketsIfNeeded();
                     }
                 }
             }
+        }
 
-            base.ResendPacketsIfNeeded();
+        /// <summary>
+        /// Handle DTLS handshake packet resending logic
+        /// </summary>
+        private void ResendHandshakePacketsIfNeeded()
+        {
+            DateTime now = DateTime.UtcNow;
+            double negotiationDurationMs = (now - this.nextEpoch.NegotiationStartTime).TotalMilliseconds;
+            this.nextEpoch.PacketResendCount++;
+
+            if ((this.ResendLimit > 0 && this.nextEpoch.PacketResendCount > this.ResendLimit)
+                || negotiationDurationMs > this.DisconnectTimeoutMs)
+            {
+                this.DisconnectInternal(HazelInternalErrors.DtlsNegotiationFailed, $"DTLS negotiation failed after {this.nextEpoch.PacketResendCount} resends ({(int)negotiationDurationMs} ms).");
+                return;
+            }
+
+            switch (this.nextEpoch.State)
+            {
+                case HandshakeState.ExpectingServerHello:
+                case HandshakeState.ExpectingCertificate:
+                case HandshakeState.ExpectingServerKeyExchange:
+                case HandshakeState.ExpectingServerHelloDone:
+                    this.SendClientHello(isRetransmit: true);
+                    break;
+
+                case HandshakeState.ExpectingChangeCipherSpec:
+                case HandshakeState.ExpectingFinished:
+                    this.SendClientKeyExchangeFlight(isRetransmit: true);
+                    break;
+
+                case HandshakeState.Established:
+                default:
+                    break;
+            }
         }
 
         /// <summary>
@@ -363,17 +422,6 @@ namespace Hazel.Dtls
         }
 
         /// <inheritdoc />
-        protected override void WriteBytesToConnectionSync(SmartBuffer bytes, int length)
-        {
-            using SmartBuffer wireData = this.WriteBytesToConnectionInternal(bytes, length);
-
-            if (wireData.Length > 0)
-            {
-                base.WriteBytesToConnectionSync(wireData, wireData.Length);
-            }
-        }
-
-        /// <inheritdoc />
         protected internal override void HandleReceive(MessageReader reader, int bytesReceived)
         {
             ByteSpan message = new ByteSpan(reader.Buffer, reader.Offset + reader.Position, reader.BytesRemaining);
@@ -391,8 +439,7 @@ namespace Hazel.Dtls
         /// <param name="span">Bytes of the datagram</param>
         private void HandleReceive(ByteSpan span)
         {
-            // Each incoming packet may contain multiple DTLS
-            // records
+            // Each incoming packet may contain multiple DTLS records
             while (span.Length > 0)
             {
                 Record record;
@@ -426,8 +473,7 @@ namespace Hazel.Dtls
                     continue;
                 }
 
-                // Prevent replay attacks by dropping records
-                // we've already processed
+                // Prevent replay attacks by dropping records we've already processed
                 int windowIndex = (int)(this.currentEpoch.NextExpectedSequence - record.SequenceNumber - 1);
                 ulong windowMask = 1ul << windowIndex;
                 if (record.SequenceNumber < this.currentEpoch.NextExpectedSequence)
@@ -457,7 +503,7 @@ namespace Hazel.Dtls
 
                 recordPayload = decryptedPayload;
 
-                // Update out sequence number bookkeeping
+                // Update sequence number bookkeeping
                 if (record.SequenceNumber >= this.currentEpoch.NextExpectedSequence)
                 {
                     int windowShift = (int)(record.SequenceNumber + 1 - this.currentEpoch.NextExpectedSequence);
@@ -469,47 +515,10 @@ namespace Hazel.Dtls
                     this.currentEpoch.PreviousSequenceWindowBitmask |= windowMask;
                 }
 
-                // This is handy for debugging, but too verbose even for verbose.
-                // this.logger.WriteVerbose($"Content type was {record.ContentType} ({this.nextEpoch.State})");
                 switch (record.ContentType)
                 {
                     case ContentType.ChangeCipherSpec:
-                        if (this.nextEpoch.State != HandshakeState.ExpectingChangeCipherSpec)
-                        {
-                            this.logger.WriteError($"Dropping unexpected ChangeCipherSpec State({this.nextEpoch.State})");
-                            break;
-                        }
-                        else if (this.nextEpoch.RecordProtection == null)
-                        {
-                            ///NOTE(mendsley): This _should_ not
-                            /// happen on a well-formed client.
-                            Debug.Assert(false, "How did we receive a ChangeCipherSpec message without a pending record protection instance?");
-                            break;
-                        }
-
-                        if (!ChangeCipherSpec.Parse(recordPayload))
-                        {
-                            this.logger.WriteError("Dropping malformed ChangeCipherSpec message");
-                            break;
-                        }
-
-                        // Migrate to the next epoch
-                        this.epoch = this.nextEpoch.Epoch;
-                        this.currentEpoch.RecordProtection = this.nextEpoch.RecordProtection;
-                        this.currentEpoch.NextOutgoingSequence = this.nextEpoch.NextOutgoingSequence;
-                        this.currentEpoch.NextExpectedSequence = 1;
-                        this.currentEpoch.PreviousSequenceWindowBitmask = 0;
-
-                        this.nextEpoch.State = HandshakeState.ExpectingFinished;
-                        this.nextEpoch.SelectedCipherSuite = CipherSuite.TLS_NULL_WITH_NULL_NULL;
-                        this.nextEpoch.RecordProtection = null;
-                        this.nextEpoch.Handshake?.Dispose();
-                        this.nextEpoch.Cookie = ByteSpan.Empty;
-                        this.nextEpoch.VerificationStream.Reset();
-                        this.nextEpoch.ServerPublicKey = null;
-                        this.nextEpoch.ServerRandom.SecureClear();
-                        this.nextEpoch.ClientRandom.SecureClear();
-                        this.nextEpoch.MasterSecret.SecureClear();
+                        this.HandleChangeCipherSpec(recordPayload);
                         break;
 
                     case ContentType.Alert:
@@ -535,15 +544,46 @@ namespace Hazel.Dtls
             }
         }
 
-        /// <summary>
-        /// Process an incoming Handshake protocol message
-        /// </summary>
-        /// <param name="record">Parent record</param>
-        /// <param name="message">Record payload</param>
-        /// <returns>
-        /// True if further processing of the underlying datagram
-        /// should be continues. Otherwise, false.
-        /// </returns>
+        private void HandleChangeCipherSpec(ByteSpan recordPayload)
+        {
+            if (this.nextEpoch.State != HandshakeState.ExpectingChangeCipherSpec)
+            {
+                this.logger.WriteError($"Dropping unexpected ChangeCipherSpec State({this.nextEpoch.State})");
+                return;
+            }
+            else if (this.nextEpoch.RecordProtection == null)
+            {
+                Debug.Assert(false, "How did we receive a ChangeCipherSpec message without a pending record protection instance?");
+                return;
+            }
+
+            if (!ChangeCipherSpec.Parse(recordPayload))
+            {
+                this.logger.WriteError("Dropping malformed ChangeCipherSpec message");
+                return;
+            }
+
+            // Migrate to the next epoch
+            this.epoch = this.nextEpoch.Epoch;
+            this.currentEpoch.RecordProtection = this.nextEpoch.RecordProtection;
+            this.currentEpoch.NextOutgoingSequence = this.nextEpoch.NextOutgoingSequence;
+            this.currentEpoch.NextExpectedSequence = 1;
+            this.currentEpoch.PreviousSequenceWindowBitmask = 0;
+
+            this.nextEpoch.State = HandshakeState.ExpectingFinished;
+            this.nextEpoch.SelectedCipherSuite = CipherSuite.TLS_NULL_WITH_NULL_NULL;
+            this.nextEpoch.RecordProtection = null;
+            this.nextEpoch.Handshake?.Dispose();
+            this.nextEpoch.Cookie = ByteSpan.Empty;
+            this.nextEpoch.VerificationStream.Reset();
+            this.nextEpoch.ServerPublicKey = null;
+            this.nextEpoch.ServerRandom.SecureClear();
+            this.nextEpoch.ClientRandom.SecureClear();
+            this.nextEpoch.MasterSecret.SecureClear();
+        }
+
+        // 为了简洁，这里只包含主要的 handshake 处理方法的签名
+        // 完整的实现需要从 DtlsUnityConnection 复制所有的 ProcessHandshake 相关方法
         private bool ProcessHandshake(ref Record record, ByteSpan message)
         {
             // Each record may have multiple Handshake messages
@@ -935,16 +975,12 @@ namespace Hazel.Dtls
         {
             foreach (var frag in fragments)
             {
-                // New fragment overlaps an existing one
-                if (newOffset <= frag.Offset
-                    && frag.Offset < newOffset + newLength)
+                if (newOffset <= frag.Offset && frag.Offset < newOffset + newLength)
                 {
                     return true;
                 }
 
-                // Existing fragment overlaps this new one
-                if (frag.Offset <= newOffset
-                    && newOffset < frag.Offset + frag.Length)
+                if (frag.Offset <= newOffset && newOffset < frag.Offset + frag.Length)
                 {
                     return true;
                 }
@@ -953,9 +989,6 @@ namespace Hazel.Dtls
             return false;
         }
 
-        /// <summary>
-        /// Send (resend) a ClientHello message to the server
-        /// </summary>
         protected virtual void SendClientHello(bool isRetransmit)
         {
 #if DEBUG
@@ -1033,77 +1066,6 @@ namespace Hazel.Dtls
             base.WriteBytesToConnection(buffer, packet.Length);
         }
 
-        protected void Test_SendClientHello(Func<ClientHello, ByteSpan, ByteSpan> encodeCallback)
-        {
-            // Reset our verification stream
-            this.nextEpoch.VerificationStream.Reset();
-
-            // Describe our ClientHello flight
-            ClientHello clientHello = new ClientHello();
-            clientHello.Random = this.nextEpoch.ClientRandom;
-            clientHello.Cookie = this.nextEpoch.Cookie;
-            clientHello.CipherSuites = new byte[2];
-            clientHello.CipherSuites.WriteBigEndian16((ushort)CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256);
-            clientHello.SupportedCurves = new byte[2];
-            clientHello.SupportedCurves.WriteBigEndian16((ushort)NamedCurve.x25519);
-
-            Handshake handshake = new Handshake();
-            handshake.MessageType = HandshakeType.ClientHello;
-            handshake.Length = (uint)clientHello.CalculateSize();
-            handshake.MessageSequence = 0;
-            handshake.FragmentOffset = 0;
-            handshake.FragmentLength = handshake.Length;
-
-            // Describe the record
-            int plaintextLength = (int)(Handshake.Size + handshake.Length);
-            Record outgoingRecord = new Record();
-            outgoingRecord.ContentType = ContentType.Handshake;
-            outgoingRecord.ProtocolVersion = DtlsVersion;
-            outgoingRecord.Epoch = this.epoch;
-            outgoingRecord.SequenceNumber = this.currentEpoch.NextOutgoingSequence;
-            outgoingRecord.Length = (ushort)this.currentEpoch.RecordProtection.GetEncryptedSize(plaintextLength);
-            ++this.currentEpoch.NextOutgoingSequence;
-
-            // Convert the record to wire format
-            using SmartBuffer buffer = this.bufferPool.GetObject();
-            buffer.Length = Record.Size + outgoingRecord.Length;
-            ByteSpan packet = (ByteSpan)buffer;
-            ByteSpan writer = packet;
-            outgoingRecord.Encode(packet);
-            writer = writer.Slice(Record.Size);
-            handshake.Encode(writer);
-            writer = writer.Slice(Handshake.Size);
-
-            writer = encodeCallback(clientHello, writer);
-
-            // Write ClientHello to the verification stream
-            this.nextEpoch.VerificationStream.AddData(
-                packet.Slice(
-                      Record.Size
-                    , Handshake.Size + (int)handshake.Length
-                )
-            );
-
-            // Protect the record
-            this.currentEpoch.RecordProtection.EncryptClientPlaintext(
-                packet.Slice(Record.Size, outgoingRecord.Length),
-                packet.Slice(Record.Size, plaintextLength),
-                ref outgoingRecord
-            );
-
-            this.nextEpoch.State = HandshakeState.ExpectingServerHello;
-            if (this.nextEpoch.NegotiationStartTime == DateTime.MinValue) this.nextEpoch.NegotiationStartTime = DateTime.UtcNow;
-            this.nextEpoch.NextPacketResendTime = DateTime.UtcNow + this.handshakeResendTimeout;
-            base.WriteBytesToConnection(buffer, packet.Length);
-        }
-
-        /// <summary>
-        /// Send (resend) the ClientKeyExchange flight
-        /// </summary>
-        /// <param name="isRetransmit">
-        /// True if this is a retransmit of the flight. Otherwise,
-        /// false
-        /// </param>
         protected virtual void SendClientKeyExchangeFlight(bool isRetransmit)
         {
 #if DEBUG

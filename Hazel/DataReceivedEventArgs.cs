@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace Hazel
+﻿namespace Hazel
 {
     public struct DataReceivedEventArgs
     {
@@ -18,7 +13,7 @@ namespace Hazel
         ///     The <see cref="SendOption"/> the data was sent with.
         /// </summary>
         public readonly SendOption SendOption;
-        
+
         public DataReceivedEventArgs(Connection sender, MessageReader msg, SendOption sendOption)
         {
             this.Sender = sender;

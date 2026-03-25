@@ -1,6 +1,6 @@
-﻿using System;
-using Hazel.UPnP;
+﻿using Hazel.UPnP;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 
 namespace Hazel.UnitTests
 {

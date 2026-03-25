@@ -1,5 +1,4 @@
-﻿using System;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hazel.UnitTests
 {
@@ -65,7 +64,7 @@ namespace Hazel.UnitTests
             Assert.AreEqual(1, statistics.HelloMessagesSent);
 
             Assert.AreEqual(21, statistics.DataBytesSent);
-            
+
             Assert.AreEqual(0, statistics.MessagesReceived);
             Assert.AreEqual(0, statistics.UnreliableMessagesReceived);
             Assert.AreEqual(0, statistics.ReliableMessagesReceived);

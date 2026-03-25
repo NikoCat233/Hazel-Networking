@@ -1,5 +1,4 @@
 using Hazel.Crypto;
-using System;
 using System.Diagnostics;
 
 namespace Hazel.Dtls
@@ -7,7 +6,7 @@ namespace Hazel.Dtls
     /// <summary>
     /// *_AES_128_GCM_* cipher suite
     /// </summary>
-    public class Aes128GcmRecordProtection: IRecordProtection
+    public class Aes128GcmRecordProtection : IRecordProtection
     {
         private const int ImplicitNonceSize = 4;
         private const int ExplicitNonceSize = 8;

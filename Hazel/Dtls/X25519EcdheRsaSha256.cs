@@ -97,11 +97,11 @@ namespace Hazel.Dtls
             signer.SetHashAlgorithm("SHA256");
             ByteSpan signature = signer.CreateSignature(paramterDigest);
 
-            Debug.Assert(signature.Length == rsaPrivateKey.KeySize/8);
+            Debug.Assert(signature.Length == rsaPrivateKey.KeySize / 8);
             output[4 + X25519.KeySize] = (byte)HashAlgorithm.Sha256;
             output[5 + X25519.KeySize] = (byte)SignatureAlgorithm.RSA;
-            output.Slice(6+X25519.KeySize).WriteBigEndian16((ushort)signature.Length);
-            signature.CopyTo(output.Slice(8+X25519.KeySize));
+            output.Slice(6 + X25519.KeySize).WriteBigEndian16((ushort)signature.Length);
+            signature.CopyTo(output.Slice(8 + X25519.KeySize));
         }
 
         /// <inheritdoc />
@@ -143,10 +143,10 @@ namespace Hazel.Dtls
                 return false;
             }
 
-            ByteSpan keyParameters = serverKeyExchangeMessage.Slice(0, 4+X25519.KeySize);
+            ByteSpan keyParameters = serverKeyExchangeMessage.Slice(0, 4 + X25519.KeySize);
             ByteSpan othersPublicKey = keyParameters.Slice(4);
             ushort signatureSize = serverKeyExchangeMessage.ReadBigEndian16(6 + X25519.KeySize);
-            ByteSpan signature = serverKeyExchangeMessage.Slice(4+keyParameters.Length);
+            ByteSpan signature = serverKeyExchangeMessage.Slice(4 + keyParameters.Length);
 
             if (signatureSize != signature.Length)
             {

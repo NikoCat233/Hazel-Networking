@@ -74,7 +74,7 @@ namespace Hazel.Udp
 
                 this._state = ConnectionState.NotConnected;
             }
-            
+
             var bytes = EmptyDisconnectBytes;
             if (data != null && data.Length > 0)
             {

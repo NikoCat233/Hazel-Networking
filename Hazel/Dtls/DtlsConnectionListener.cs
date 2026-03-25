@@ -1,3 +1,5 @@
+using Hazel.Crypto;
+using Hazel.Udp.FewerThreads;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -6,8 +8,6 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
-using Hazel.Udp.FewerThreads;
-using Hazel.Crypto;
 
 namespace Hazel.Dtls
 {
@@ -90,7 +90,7 @@ namespace Hazel.Dtls
             public HazelDtlsSessionInfo Session;
 
             public CurrentEpoch CurrentEpoch;
-            public NextEpoch  NextEpoch;
+            public NextEpoch NextEpoch;
 
             public ConnectionId ConnectionId;
 
@@ -169,8 +169,9 @@ namespace Hazel.Dtls
 
         // HMAC key to validate ClientHello cookie
         private ThreadedHmacHelper hmacHelper;
-        private HMAC CurrentCookieHmac { 
-            get 
+        private HMAC CurrentCookieHmac
+        {
+            get
             {
                 return hmacHelper.GetCurrentCookieHmacsForThread();
             }
@@ -193,7 +194,7 @@ namespace Hazel.Dtls
         public int NonPeerVerifyHelloRequests;
         public int PeerVerifyHelloRequests;
 
-        private int connectionSerial_unsafe =  0;
+        private int connectionSerial_unsafe = 0;
 
         private Timer staleConnectionUpkeep;
 

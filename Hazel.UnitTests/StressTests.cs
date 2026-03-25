@@ -1,13 +1,11 @@
-﻿using System;
+﻿using Hazel.Udp;
+using Hazel.Udp.FewerThreads;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 using System.Threading.Tasks;
-using Hazel.Dtls;
-using Hazel.Udp;
-using Hazel.Udp.FewerThreads;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hazel.UnitTests
 {
@@ -22,13 +20,14 @@ namespace Hazel.UnitTests
             var ep = new IPEndPoint(IPAddress.Loopback, 22023);
             Parallel.For(0, 10000,
                 new ParallelOptions { MaxDegreeOfParallelism = 64 },
-                (i) => {
-                    
-                var connection = new UdpClientConnection(new TestLogger(), ep);
-                connection.KeepAliveInterval = 50;
+                (i) =>
+                {
 
-                connection.Connect(new byte[5]);
-            });
+                    var connection = new UdpClientConnection(new TestLogger(), ep);
+                    connection.KeepAliveInterval = 50;
+
+                    connection.Connect(new byte[5]);
+                });
         }
 
         // This was a thing that happened to us a DDoS. Mildly instructional that we straight up ignore it.
