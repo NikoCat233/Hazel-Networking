@@ -15,7 +15,8 @@ namespace Hazel
         PingsWithoutResponse,
         ReliablePacketWithoutResponse,
         ConnectionDisconnected,
-        DtlsNegotiationFailed
+        DtlsNegotiationFailed,
+        ReliablePacketTooFarAhead
     }
 
     /// <summary>

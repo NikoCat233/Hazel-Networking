@@ -11,6 +11,8 @@ namespace Hazel.Udp
         private const int MinResendDelayMs = 50;
         private const int MaxInitialResendDelayMs = 300;
         private const int MaxAdditionalResendDelayMs = 1000;
+        private const int MaxReliableReceiveGap = 256;
+        private const int MaxMissingReliablePackets = 256;
 
         public readonly ObjectPool<Packet> PacketPool;
 
@@ -327,7 +329,10 @@ namespace Hazel.Udp
              */
 
             bool result = true;
-            
+            bool receiveGapTooLarge = false;
+            int missingCount = 0;
+            int currentMissingCount = 0;
+
             lock (reliableDataPacketsMissing)
             {
                 //Calculate overwritePointer
@@ -343,25 +348,40 @@ namespace Hazel.Udp
                 //If it's new or we've not received anything yet
                 if (isNew)
                 {
-                    // Mark items between the most recent receive and the id received as missing
-                    if (id > reliableReceiveLast)
+                    missingCount = (ushort)(id - reliableReceiveLast) - 1;
+                    currentMissingCount = reliableDataPacketsMissing.Count;
+
+                    if (missingCount > MaxReliableReceiveGap)
                     {
-                        for (ushort i = (ushort)(reliableReceiveLast + 1); i < id; i++)
-                        {
-                            reliableDataPacketsMissing.Add(i);
-                        }
+                        receiveGapTooLarge = true;
                     }
                     else
                     {
-                        int cnt = (ushort.MaxValue - reliableReceiveLast) + id;
-                        for (ushort i = 1; i <= cnt; ++i)
+                        int newMissingCount = 0;
+                        for (int i = 1; i <= missingCount; ++i)
                         {
-                            reliableDataPacketsMissing.Add((ushort)(i + reliableReceiveLast));
+                            if (!reliableDataPacketsMissing.Contains((ushort)(reliableReceiveLast + i)))
+                            {
+                                ++newMissingCount;
+                            }
+                        }
+
+                        if (currentMissingCount + newMissingCount > MaxMissingReliablePackets)
+                        {
+                            receiveGapTooLarge = true;
+                        }
+                        else
+                        {
+                            // Mark items between the most recent receive and the id received as missing.
+                            for (int i = 1; i <= missingCount; ++i)
+                            {
+                                reliableDataPacketsMissing.Add((ushort)(reliableReceiveLast + i));
+                            }
+
+                            //Update the most recently received
+                            reliableReceiveLast = id;
                         }
                     }
-
-                    //Update the most recently received
-                    reliableReceiveLast = id;
                 }
                 
                 //Else it could be a missing packet
@@ -373,6 +393,14 @@ namespace Hazel.Udp
                         result = false;
                     }
                 }
+            }
+
+            if (receiveGapTooLarge)
+            {
+                DisconnectInternal(
+                    HazelInternalErrors.ReliablePacketTooFarAhead,
+                    $"Reliable packet {id} skipped {missingCount} packets with {currentMissingCount} already missing");
+                return false;
             }
 
             // Send an acknowledgement

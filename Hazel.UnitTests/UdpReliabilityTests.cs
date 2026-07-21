@@ -106,6 +106,71 @@ namespace Hazel.UnitTests
             Assert.AreEqual(1, (recentPackets >> 1) & 1);
         }
 
+        [TestMethod]
+        public void TestReliableReceiveAcceptsMaximumGap()
+        {
+            List<MessageReader> messagesReceived = new List<MessageReader>();
+            UdpConnectionTestHarness dut = new UdpConnectionTestHarness();
+            dut.Connect();
+            dut.DataReceived += evt => messagesReceived.Add(evt.Message);
+
+            MessageWriter data = MessageWriter.Get(SendOption.Reliable);
+            SetReliableId(data, 256);
+            dut.Test_Receive(data);
+
+            Assert.AreEqual(ConnectionState.Connected, dut.State);
+            Assert.AreEqual(256, dut.ReliableReceiveLast);
+            Assert.AreEqual(1, messagesReceived.Count);
+            Assert.AreEqual(1, dut.BytesSent.Count);
+        }
+
+        [TestMethod]
+        public void TestReliableReceiveDisconnectsWhenGapExceedsLimit()
+        {
+            List<MessageReader> messagesReceived = new List<MessageReader>();
+            HazelInternalErrors? disconnectError = null;
+            UdpConnectionTestHarness dut = new UdpConnectionTestHarness();
+            dut.Connect();
+            dut.DataReceived += evt => messagesReceived.Add(evt.Message);
+            dut.OnInternalDisconnect = error =>
+            {
+                disconnectError = error;
+                return null;
+            };
+
+            MessageWriter data = MessageWriter.Get(SendOption.Reliable);
+            SetReliableId(data, 257);
+            dut.Test_Receive(data);
+
+            Assert.AreEqual(ConnectionState.NotConnected, dut.State);
+            Assert.AreEqual(HazelInternalErrors.ReliablePacketTooFarAhead, disconnectError);
+            Assert.AreEqual(ushort.MaxValue, dut.ReliableReceiveLast);
+            Assert.AreEqual(0, messagesReceived.Count);
+            Assert.AreEqual(0, dut.BytesSent.Count);
+        }
+
+        [TestMethod]
+        public void TestReliableReceiveDisconnectsWhenMissingSetLimitExceeded()
+        {
+            List<MessageReader> messagesReceived = new List<MessageReader>();
+            UdpConnectionTestHarness dut = new UdpConnectionTestHarness();
+            dut.Connect();
+            dut.DataReceived += evt => messagesReceived.Add(evt.Message);
+
+            MessageWriter data = MessageWriter.Get(SendOption.Reliable);
+            SetReliableId(data, 128);
+            dut.Test_Receive(data);
+            SetReliableId(data, 257);
+            dut.Test_Receive(data);
+            SetReliableId(data, 259);
+            dut.Test_Receive(data);
+
+            Assert.AreEqual(ConnectionState.NotConnected, dut.State);
+            Assert.AreEqual(257, dut.ReliableReceiveLast);
+            Assert.AreEqual(2, messagesReceived.Count);
+            Assert.AreEqual(2, dut.BytesSent.Count);
+        }
+
         private static void SetReliableId(MessageWriter data, int i)
         {
             ushort id = (ushort)i;
