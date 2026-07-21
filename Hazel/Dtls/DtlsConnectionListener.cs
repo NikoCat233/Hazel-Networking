@@ -99,6 +99,7 @@ namespace Hazel.Dtls
             public readonly ProtocolVersion ProtocolVersion;
 
             public DateTime StartOfNegotiation;
+            public int ApplicationDataProcessingCount;
 
             public PeerData(ConnectionId connectionId, ulong nextExpectedSequenceNumber, ProtocolVersion protocolVersion)
             {
@@ -294,9 +295,19 @@ namespace Hazel.Dtls
             }
 
             ConnectionId peerConnectionId;
+            bool processApplicationData = false;
 
             lock (peer)
             {
+                // The peer may have been removed while this packet was waiting
+                // for its lock. Do not process state that has already been
+                // disposed or replaced by a new peer at the same endpoint.
+                if (!this.existingPeers.TryGetValue(peerAddress, out PeerData currentPeer)
+                    || !ReferenceEquals(peer, currentPeer))
+                {
+                    return;
+                }
+
                 peerConnectionId = peer.ConnectionId;
 
                 // Each incoming packet may contain multiple DTLS
@@ -485,17 +496,36 @@ namespace Hazel.Dtls
                             reader.Length = recordPayload.Length;
                             recordPayload.CopyTo(reader.Buffer);
 
-                            peer.ApplicationData.Add(reader);
-                            break;
+                        peer.ApplicationData.Add(reader);
+                        break;
                     }
+                }
+
+                if (!peer.ApplicationData.IsEmpty)
+                {
+                    ++peer.ApplicationDataProcessingCount;
+                    processApplicationData = true;
                 }
             }
 
             // The peer lock must be exited before leaving the DtlsConnectionListener context to prevent deadlocks
             //   because ApplicationData processing may reenter this context
-            while (peer.ApplicationData.TryTake(out var appMsg))
+            if (processApplicationData)
             {
-                base.ReadCallback(appMsg, peerAddress, peerConnectionId);
+                try
+                {
+                    while (peer.ApplicationData.TryTake(out var appMsg))
+                    {
+                        base.ReadCallback(appMsg, peerAddress, peerConnectionId);
+                    }
+                }
+                finally
+                {
+                    lock (peer)
+                    {
+                        --peer.ApplicationDataProcessingCount;
+                    }
+                }
             }
         }
 
@@ -708,7 +738,6 @@ namespace Hazel.Dtls
                             // Either way, there is not a feasible
                             // way to progress the connection.
                             MarkConnectionAsStale(peer.ConnectionId);
-                            this.existingPeers.TryRemove(peerAddress, out _);
 
                             return false;
                         }
@@ -1395,7 +1424,11 @@ namespace Hazel.Dtls
                 PeerData peer = kvp.Value;
                 lock (peer)
                 {
-                    if (peer.Epoch == 0 || peer.NextEpoch.State != HandshakeState.ExpectingHello)
+                    bool waitingForApplicationConnection = !this.allConnections.ContainsKey(peer.ConnectionId)
+                        && peer.ApplicationDataProcessingCount == 0;
+                    if (waitingForApplicationConnection
+                        || peer.Epoch == 0
+                        || peer.NextEpoch.State != HandshakeState.ExpectingHello)
                     {
                         TimeSpan negotiationAge = now - peer.StartOfNegotiation;
                         if (negotiationAge > maxAge)
@@ -1422,16 +1455,61 @@ namespace Hazel.Dtls
             if (this.allConnections.ContainsKey(connectionId))
             {
                 this.staleConnections.Push(connectionId);
+                return;
+            }
+
+            // A DTLS peer is created before its application-level UDP
+            // connection. If negotiation stalls before that connection is
+            // created, there is nothing to disconnect, so remove and dispose
+            // the half-open peer directly.
+            if (this.existingPeers.TryGetValue(connectionId.EndPoint, out PeerData peer))
+            {
+                lock (peer)
+                {
+                    if (peer.ConnectionId.Equals(connectionId)
+                        && peer.ApplicationDataProcessingCount == 0
+                        && !this.allConnections.ContainsKey(connectionId))
+                    {
+                        this.RemovePeerRecord(connectionId.EndPoint, peer);
+                    }
+                }
             }
         }
 
         /// <inheritdoc />
         internal override void RemovePeerRecord(ConnectionId connectionId)
         {
-            if (this.existingPeers.TryRemove(connectionId.EndPoint, out var peer))
+            if (this.existingPeers.TryGetValue(connectionId.EndPoint, out PeerData peer))
             {
-                peer.Dispose();
+                lock (peer)
+                {
+                    if (peer.ConnectionId.Equals(connectionId))
+                    {
+                        this.RemovePeerRecord(connectionId.EndPoint, peer);
+                    }
+                }
             }
+        }
+
+        private bool RemovePeerRecord(IPEndPoint peerAddress, PeerData expectedPeer)
+        {
+            PeerData removedPeer = null;
+            lock (this.existingPeers)
+            {
+                if (this.existingPeers.TryGetValue(peerAddress, out PeerData currentPeer)
+                    && ReferenceEquals(expectedPeer, currentPeer))
+                {
+                    this.existingPeers.TryRemove(peerAddress, out removedPeer);
+                }
+            }
+
+            if (removedPeer != null)
+            {
+                removedPeer.Dispose();
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>

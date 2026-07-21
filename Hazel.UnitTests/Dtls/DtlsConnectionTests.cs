@@ -85,6 +85,15 @@ IsdbLCwHYD3GVgk/D7NVxyU=
             return clientCertificates;
         }
 
+        private static int GetAvailableUdpPort()
+        {
+            using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+            {
+                socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+                return ((IPEndPoint)socket.LocalEndPoint).Port;
+            }
+        }
+
         protected DtlsConnectionListener CreateListener(int numWorkers, IPEndPoint endPoint, ILogger logger, IPMode ipMode = IPMode.IPv4)
         {
             DtlsConnectionListener listener = new DtlsConnectionListener(2, endPoint, logger, ipMode);
@@ -835,6 +844,116 @@ IsdbLCwHYD3GVgk/D7NVxyU=
             {
                 base.SendClientHello(isRetransmit);
                 base.SendClientHello(true);
+            }
+        }
+
+        private class HalfOpenDtlsConnection : DtlsUnityConnection
+        {
+            public HalfOpenDtlsConnection(ILogger logger, IPEndPoint remoteEndPoint)
+                : base(logger, remoteEndPoint)
+            {
+            }
+
+            protected override void SendClientKeyExchangeFlight(bool isRetransmit)
+            {
+                // Stop after the cookie-verified ClientHello so the listener
+                // has a peer record but no application-level connection.
+            }
+        }
+
+        [TestMethod]
+        public void StaleHalfOpenPeerIsRemovedTest()
+        {
+            IPEndPoint listenerEndPoint = new IPEndPoint(IPAddress.Loopback, GetAvailableUdpPort());
+
+            using (DtlsConnectionListener listener = this.CreateListener(2, listenerEndPoint, new TestLogger("Server")))
+            using (HalfOpenDtlsConnection client = new HalfOpenDtlsConnection(new TestLogger("Client "), listenerEndPoint))
+            {
+                client.SetValidServerCertificates(GetCertificateForClient());
+
+                int connections = 0;
+                listener.NewConnection += (_) => Interlocked.Increment(ref connections);
+
+                listener.Start();
+                client.ConnectAsync();
+
+                Assert.IsTrue(
+                    SpinWait.SpinUntil(() => listener.PeerCount == 1, 5000),
+                    "The listener did not create a peer for the cookie-verified ClientHello.");
+                Assert.IsTrue(
+                    SpinWait.SpinUntil(() => listener.PeerCount == 0, 7000),
+                    "The listener did not evict the stale half-open peer.");
+                Assert.AreEqual(0, connections, "A half-open DTLS handshake must not create an application connection.");
+            }
+        }
+
+        [TestMethod]
+        public void StalePeerWithoutFinishedIsRemovedTest()
+        {
+            IPEndPoint listenerEndPoint = new IPEndPoint(IPAddress.Loopback, GetAvailableUdpPort());
+            IPEndPoint captureEndPoint = new IPEndPoint(IPAddress.Loopback, GetAvailableUdpPort());
+            int truncatedFlights = 0;
+
+            using (SocketCapture capture = new SocketCapture(captureEndPoint, listenerEndPoint, new TestLogger("Capture")))
+            using (DtlsConnectionListener listener = this.CreateListener(2, listenerEndPoint, new TestLogger("Server")))
+            using (DtlsUnityConnection client = this.CreateConnection(captureEndPoint, new TestLogger("Client ")))
+            using (Semaphore serverToClient = new Semaphore(0, int.MaxValue))
+            {
+                capture.SendToLocalSemaphore = serverToClient;
+                capture.PacketForRemoteTransform = packet =>
+                {
+                    if (!Record.Parse(out Record firstRecord, expectedProtocolVersion: null, packet))
+                    {
+                        return packet;
+                    }
+
+                    int secondRecordOffset = Record.Size + firstRecord.Length;
+                    if (firstRecord.ContentType != ContentType.Handshake || packet.Length <= secondRecordOffset
+                        || !Record.Parse(out Record secondRecord, expectedProtocolVersion: null, packet.Slice(secondRecordOffset)))
+                    {
+                        return packet;
+                    }
+
+                    int thirdRecordOffset = secondRecordOffset + Record.Size + secondRecord.Length;
+                    if (secondRecord.ContentType != ContentType.ChangeCipherSpec || packet.Length <= thirdRecordOffset
+                        || !Record.Parse(out Record thirdRecord, expectedProtocolVersion: null, packet.Slice(thirdRecordOffset))
+                        || thirdRecord.ContentType != ContentType.Handshake
+                        || thirdRecord.Epoch == 0)
+                    {
+                        return packet;
+                    }
+
+                    Interlocked.Increment(ref truncatedFlights);
+                    return packet.Slice(0, thirdRecordOffset);
+                };
+
+                int connections = 0;
+                listener.NewConnection += (_) => Interlocked.Increment(ref connections);
+
+                listener.Start();
+                client.ConnectAsync();
+
+                // Deliver the server flight in order so this test isolates the
+                // missing Finished state instead of exercising packet reordering.
+                capture.AssertPacketsToLocalCountEquals(1);
+                capture.ReleasePacketsToLocal(1);
+                capture.AssertPacketsToLocalCountEquals(3);
+                for (int i = 0; i < 3; ++i)
+                {
+                    capture.ReleasePacketsToLocal(1);
+                    Thread.Sleep(25);
+                }
+
+                Assert.IsTrue(
+                    SpinWait.SpinUntil(() => Volatile.Read(ref truncatedFlights) > 0, 5000),
+                    "The client did not send a ClientKeyExchange and ChangeCipherSpec flight.");
+                Assert.IsTrue(
+                    SpinWait.SpinUntil(() => listener.PeerCount == 1, 5000),
+                    "The listener did not retain the peer while waiting for Finished.");
+                Assert.IsTrue(
+                    SpinWait.SpinUntil(() => listener.PeerCount == 0, 7000),
+                    "The listener did not evict the peer after Finished was omitted.");
+                Assert.AreEqual(0, connections, "A DTLS handshake without Finished must not create an application connection.");
             }
         }
 
