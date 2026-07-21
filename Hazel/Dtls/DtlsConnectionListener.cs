@@ -76,6 +76,8 @@ namespace Hazel.Dtls
 
             public ByteSpan ClientVerification;
             public ByteSpan ServerVerification;
+            public ByteSpan ServerCertificate;
+            public ByteSpan ServerKeyExchange;
 
         }
 
@@ -137,6 +139,8 @@ namespace Hazel.Dtls
                 this.NextEpoch.VerificationStream = new Sha256Stream();
                 this.NextEpoch.ClientVerification = block.Slice(Random.Size * 2, Finished.Size);
                 this.NextEpoch.ServerVerification = block.Slice(Random.Size * 2 + Finished.Size, Finished.Size);
+                this.NextEpoch.ServerCertificate = ByteSpan.Empty;
+                this.NextEpoch.ServerKeyExchange = ByteSpan.Empty;
 
                 this.ConnectionId = connectionId;
 
@@ -167,6 +171,7 @@ namespace Hazel.Dtls
         // Private key component of certificate's public key
         private ByteSpan encodedCertificate;
         private RSA certificatePrivateKey;
+        private readonly ReaderWriterLockSlim certificateLock = new ReaderWriterLockSlim();
 
         // HMAC key to validate ClientHello cookie
         private ThreadedHmacHelper hmacHelper;
@@ -251,10 +256,21 @@ namespace Hazel.Dtls
                 throw new ArgumentException("Certificate must be signed by an RSA key", nameof(certificate));
             }
 
-            this.certificatePrivateKey?.Dispose();
-            this.certificatePrivateKey = privateKey;
+            ByteSpan encodedCertificate = Certificate.Encode(certificate);
+            RSA previousPrivateKey;
+            this.certificateLock.EnterWriteLock();
+            try
+            {
+                previousPrivateKey = this.certificatePrivateKey;
+                this.certificatePrivateKey = privateKey;
+                this.encodedCertificate = encodedCertificate;
+            }
+            finally
+            {
+                this.certificateLock.ExitWriteLock();
+            }
 
-            this.encodedCertificate = Certificate.Encode(certificate);
+            previousPrivateKey?.Dispose();
         }
 
         /// <summary>
@@ -472,6 +488,8 @@ namespace Hazel.Dtls
                             peer.NextEpoch.State = HandshakeState.ExpectingHello;
                             peer.NextEpoch.Handshake?.Dispose();
                             peer.NextEpoch.Handshake = null;
+                            peer.NextEpoch.ServerCertificate = ByteSpan.Empty;
+                            peer.NextEpoch.ServerKeyExchange = ByteSpan.Empty;
                             peer.NextEpoch.NextOutgoingSequence = 1;
                             peer.NextEpoch.RecordProtection = null;
                             peer.NextEpoch.VerificationStream.Reset();
@@ -947,6 +965,8 @@ namespace Hazel.Dtls
                 peer.NextEpoch.State = HandshakeState.ExpectingClientKeyExchange;
                 peer.NextEpoch.SelectedCipherSuite = selectedCipherSuite;
                 peer.NextEpoch.Handshake = handshakeCipherSuite;
+                peer.NextEpoch.ServerCertificate = ByteSpan.Empty;
+                peer.NextEpoch.ServerKeyExchange = ByteSpan.Empty;
                 clientHello.Random.CopyTo(peer.NextEpoch.ClientRandom);
                 peer.NextEpoch.ServerRandom.FillWithRandom(this.random);
                 recordMessagesForVerifyData = true;
@@ -991,11 +1011,21 @@ namespace Hazel.Dtls
             // ServerKeyExchange and the ServerHelloDone
             // messages.
 
-            // Describe first record of the flight
-            ServerHello serverHello = new ServerHello();
-            serverHello.ServerProtocolVersion = protocolVersion;
-            serverHello.Random = peer.NextEpoch.ServerRandom;
-            serverHello.CipherSuite = selectedCipherSuite;
+            bool certificateLockTaken = false;
+            if (peer.NextEpoch.ServerKeyExchange.Length == 0)
+            {
+                this.certificateLock.EnterReadLock();
+                certificateLockTaken = true;
+                peer.NextEpoch.ServerCertificate = this.encodedCertificate;
+            }
+
+            try
+            {
+                // Describe first record of the flight
+                ServerHello serverHello = new ServerHello();
+                serverHello.ServerProtocolVersion = protocolVersion;
+                serverHello.Random = peer.NextEpoch.ServerRandom;
+                serverHello.CipherSuite = selectedCipherSuite;
 
             Handshake serverHelloHandshake = new Handshake();
             serverHelloHandshake.MessageType = HandshakeType.ServerHello;
@@ -1012,7 +1042,7 @@ namespace Hazel.Dtls
             //  * ServerHello payload
             //  * Certificate header
 
-            var certificateData = this.encodedCertificate;
+            var certificateData = peer.NextEpoch.ServerCertificate;
             int initialCertPadding = Record.Size + Handshake.Size + serverHello.Size + Handshake.Size;
             int certInitialFragmentSize = Math.Min(certificateData.Length, maxCertFragmentSize - initialCertPadding);
 
@@ -1081,7 +1111,7 @@ namespace Hazel.Dtls
                 certWriter = certWriter.Slice(Handshake.Size);
 
                 peer.NextEpoch.VerificationStream.AddData(certPacket);
-                peer.NextEpoch.VerificationStream.AddData(this.encodedCertificate);
+                peer.NextEpoch.VerificationStream.AddData(peer.NextEpoch.ServerCertificate);
             }
 
             // Process additional certificate records
@@ -1128,10 +1158,16 @@ namespace Hazel.Dtls
                 base.QueueRawData(certBuffer, peerAddress);
             }
 
-            // Describe final record of the flight
-            Handshake serverKeyExchangeHandshake = new Handshake();
+                // Describe final record of the flight
+                if (peer.NextEpoch.ServerKeyExchange.Length == 0)
+                {
+                    peer.NextEpoch.ServerKeyExchange = new byte[peer.NextEpoch.Handshake.CalculateServerMessageSize(this.certificatePrivateKey)];
+                    peer.NextEpoch.Handshake.EncodeServerKeyExchangeMessage(peer.NextEpoch.ServerKeyExchange, this.certificatePrivateKey);
+                }
+
+                Handshake serverKeyExchangeHandshake = new Handshake();
             serverKeyExchangeHandshake.MessageType = HandshakeType.ServerKeyExchange;
-            serverKeyExchangeHandshake.Length = (uint)peer.NextEpoch.Handshake.CalculateServerMessageSize(this.certificatePrivateKey);
+            serverKeyExchangeHandshake.Length = (uint)peer.NextEpoch.ServerKeyExchange.Length;
             serverKeyExchangeHandshake.MessageSequence = 3;
             serverKeyExchangeHandshake.FragmentOffset = 0;
             serverKeyExchangeHandshake.FragmentLength = serverKeyExchangeHandshake.Length;
@@ -1165,7 +1201,7 @@ namespace Hazel.Dtls
             writer = writer.Slice(Record.Size);
             serverKeyExchangeHandshake.Encode(writer);
             writer = writer.Slice(Handshake.Size);
-            peer.NextEpoch.Handshake.EncodeServerKeyExchangeMessage(writer, this.certificatePrivateKey);
+            peer.NextEpoch.ServerKeyExchange.CopyTo(writer);
             writer = writer.Slice((int)serverKeyExchangeHandshake.Length);
             serverHelloDoneHandshake.Encode(writer);
 
@@ -1187,9 +1223,17 @@ namespace Hazel.Dtls
                 ref finalRecord
             );
 
-            base.QueueRawData(finalBuffer, peerAddress);
+                base.QueueRawData(finalBuffer, peerAddress);
 
-            return true;
+                return true;
+            }
+            finally
+            {
+                if (certificateLockTaken)
+                {
+                    this.certificateLock.ExitReadLock();
+                }
+            }
         }
 
         /// <summary>

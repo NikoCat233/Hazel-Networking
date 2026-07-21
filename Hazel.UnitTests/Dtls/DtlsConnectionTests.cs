@@ -5,6 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
@@ -847,6 +848,81 @@ IsdbLCwHYD3GVgk/D7NVxyU=
             }
         }
 
+        private class ControlledClientHelloDtlsConnection : DtlsUnityConnection
+        {
+            public ControlledClientHelloDtlsConnection(ILogger logger, IPEndPoint remoteEndPoint)
+                : base(logger, remoteEndPoint)
+            {
+            }
+
+            public void ResendClientHelloForTest()
+            {
+                base.SendClientHello(true);
+            }
+        }
+
+        private sealed class CountingRsa : RSA
+        {
+            private RSA inner;
+
+            public int SignCount;
+
+            public CountingRsa(RSA inner)
+            {
+                this.inner = inner;
+            }
+
+            public override int KeySize
+            {
+                get => this.inner.KeySize;
+                set => this.inner.KeySize = value;
+            }
+
+            public override KeySizes[] LegalKeySizes => this.inner.LegalKeySizes;
+
+            public override byte[] Decrypt(byte[] data, RSAEncryptionPadding padding)
+            {
+                return this.inner.Decrypt(data, padding);
+            }
+
+            public override byte[] Encrypt(byte[] data, RSAEncryptionPadding padding)
+            {
+                return this.inner.Encrypt(data, padding);
+            }
+
+            public override RSAParameters ExportParameters(bool includePrivateParameters)
+            {
+                return this.inner.ExportParameters(includePrivateParameters);
+            }
+
+            public override void ImportParameters(RSAParameters parameters)
+            {
+                this.inner.ImportParameters(parameters);
+            }
+
+            public override byte[] SignHash(byte[] hash, HashAlgorithmName hashAlgorithm, RSASignaturePadding padding)
+            {
+                Interlocked.Increment(ref this.SignCount);
+                return this.inner.SignHash(hash, hashAlgorithm, padding);
+            }
+
+            public override bool VerifyHash(byte[] hash, byte[] signature, HashAlgorithmName hashAlgorithm, RSASignaturePadding padding)
+            {
+                return this.inner.VerifyHash(hash, signature, hashAlgorithm, padding);
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    this.inner?.Dispose();
+                    this.inner = null;
+                }
+
+                base.Dispose(disposing);
+            }
+        }
+
         private class HalfOpenDtlsConnection : DtlsUnityConnection
         {
             public HalfOpenDtlsConnection(ILogger logger, IPEndPoint remoteEndPoint)
@@ -998,6 +1074,40 @@ IsdbLCwHYD3GVgk/D7NVxyU=
                 Assert.IsTrue(connects <= 1, $"Too many connections: {connects}");
                 Assert.AreEqual(ConnectionState.Connected, client.State);
                 Assert.IsTrue(client.HandshakeComplete);
+            }
+        }
+
+        [TestMethod]
+        public void ResentClientHelloReusesServerKeyExchangeSignatureTest()
+        {
+            IPEndPoint listenerEndPoint = new IPEndPoint(IPAddress.Loopback, GetAvailableUdpPort());
+            IPEndPoint captureEndPoint = new IPEndPoint(IPAddress.Loopback, GetAvailableUdpPort());
+
+            using (SocketCapture capture = new SocketCapture(captureEndPoint, listenerEndPoint, new TestLogger("Capture")))
+            using (DtlsConnectionListener listener = this.CreateListener(2, listenerEndPoint, new TestLogger("Server")))
+            using (ControlledClientHelloDtlsConnection client = new ControlledClientHelloDtlsConnection(new TestLogger("Client "), captureEndPoint))
+            using (Semaphore serverToClient = new Semaphore(0, int.MaxValue))
+            {
+                capture.SendToLocalSemaphore = serverToClient;
+                FieldInfo privateKeyField = typeof(DtlsConnectionListener).GetField("certificatePrivateKey", BindingFlags.Instance | BindingFlags.NonPublic);
+                CountingRsa countingRsa = new CountingRsa((RSA)privateKeyField.GetValue(listener));
+                privateKeyField.SetValue(listener, countingRsa);
+
+                client.SetValidServerCertificates(GetCertificateForClient());
+                listener.Start();
+                client.SetHandshakeResendTimeout(TimeSpan.FromSeconds(10));
+                client.ConnectAsync();
+
+                capture.AssertPacketsToLocalCountEquals(1);
+                capture.ReleasePacketsToLocal(1);
+
+                capture.AssertPacketsToLocalCountEquals(3);
+                Assert.AreEqual(1, countingRsa.SignCount);
+
+                client.ResendClientHelloForTest();
+                capture.AssertPacketsToLocalCountEquals(6);
+
+                Assert.AreEqual(1, countingRsa.SignCount, "ClientHello retransmission must reuse the signed ServerKeyExchange payload.");
             }
         }
 
